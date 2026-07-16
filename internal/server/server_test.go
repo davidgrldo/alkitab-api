@@ -81,3 +81,23 @@ func TestSingleVerse(t *testing.T) {
 		t.Errorf("want 1 verse filtered, got %d", len(verses))
 	}
 }
+
+func TestSearch(t *testing.T) {
+	h := newServer(t).Handler()
+	m := getJSON(t, h, "/v1/search?q=truth&version=kjv", 200)
+	hits, _ := m["hits"].([]any)
+	if len(hits) == 0 {
+		t.Error("want at least one hit for 'truth'")
+	}
+}
+
+func TestSearchEmptyQuery(t *testing.T) {
+	h := newServer(t).Handler()
+	getJSON(t, h, "/v1/search?q=&version=kjv", 400)
+}
+
+func TestDailyAndRandom(t *testing.T) {
+	h := newServer(t).Handler()
+	getJSON(t, h, "/v1/daily?version=kjv", 200)
+	getJSON(t, h, "/v1/random?version=kjv", 200)
+}

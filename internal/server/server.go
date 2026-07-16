@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/davidgrldo/alkitab-api/internal/bible"
 )
@@ -22,6 +23,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/{version}/books", s.books)
 	mux.HandleFunc("GET /v1/{version}/{book}/{chapter}/{verse}", s.chapterVerse)
 	mux.HandleFunc("GET /v1/{version}/{book}/{chapter}", s.chapter)
+	mux.HandleFunc("GET /v1/search", s.search)
+	mux.HandleFunc("GET /v1/daily", s.daily)
+	mux.HandleFunc("GET /v1/random", s.random)
 	return mux
 }
 
@@ -122,4 +126,39 @@ func (s *Server) resolveChapter(r *http.Request) (*bible.Chapter, error) {
 		return nil, err
 	}
 	return s.eng.Chapter(version, bookID, chap)
+}
+
+func (s *Server) search(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	if q == "" {
+		writeError(w, http.StatusBadRequest, "missing query parameter 'q'")
+		return
+	}
+	version := r.URL.Query().Get("version")
+	hits, err := s.eng.Search(version, q)
+	if err != nil {
+		s.mapErr(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"hits": hits})
+}
+
+func (s *Server) daily(w http.ResponseWriter, r *http.Request) {
+	version := r.URL.Query().Get("version")
+	h, err := s.eng.DailyVerse(version, time.Now())
+	if err != nil {
+		s.mapErr(w, err)
+		return
+	}
+	writeJSON(w, h)
+}
+
+func (s *Server) random(w http.ResponseWriter, r *http.Request) {
+	version := r.URL.Query().Get("version")
+	h, err := s.eng.RandomVerse(version)
+	if err != nil {
+		s.mapErr(w, err)
+		return
+	}
+	writeJSON(w, h)
 }
