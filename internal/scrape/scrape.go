@@ -1,0 +1,122 @@
+package scrape
+
+import (
+	"errors"
+	"io"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/PuerkitoBio/goquery"
+	"github.com/davidgrldo/alkitab-api/internal/bible"
+)
+
+// staticVersions: the scrape adapter cannot enumerate alkitab.mobi's catalog
+// without scraping, so it advertises a small known set.
+var staticVersions = []bible.Translation{
+	{ID: "tb", Name: "Terjemahan Baru", Language: "id"},
+}
+
+// Scrape is a bible.Source that fetches chapters from alkitab.mobi.
+// It does NOT implement Corpus (per-query scrape search is infeasible).
+type Scrape struct {
+	base   string
+	client *http.Client
+}
+
+func New(baseURL string) *Scrape {
+	if baseURL == "" {
+		baseURL = "https://alkitab.mobi"
+	}
+	return &Scrape{base: strings.TrimRight(baseURL, "/"), client: http.DefaultClient}
+}
+
+func (s *Scrape) Translations() []bible.Translation { return staticVersions }
+
+func (s *Scrape) Books(version string) ([]bible.Book, error) {
+	if !versionSupported(version) {
+		return nil, bible.ErrUnsupportedVersion
+	}
+	return bible.CanonicalBooks(), nil
+}
+
+func (s *Scrape) Chapter(version, book string, chapter int) (*bible.Chapter, error) {
+	if !versionSupported(version) {
+		return nil, bible.ErrUnsupportedVersion
+	}
+	bookName := bible.IndonesianBookName(book)
+	if bookName == "" {
+		return nil, bible.ErrNotFound
+	}
+	url := strings.Join([]string{s.base, version, bookName, strconv.Itoa(chapter)}, "/")
+	res, err := s.client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode == http.StatusNotFound {
+		return nil, bible.ErrNotFound
+	}
+	if res.StatusCode != http.StatusOK {
+		return nil, errors.New("scrape: upstream status " + res.Status)
+	}
+	verses, err := parse(res.Body)
+	if err != nil {
+		return nil, err
+	}
+	if len(verses) == 0 {
+		return nil, bible.ErrNotFound
+	}
+	return &bible.Chapter{Translation: version, Book: book, Number: chapter, Verses: verses}, nil
+}
+
+func parse(r io.Reader) ([]bible.Verse, error) {
+	doc, err := goquery.NewDocumentFromReader(r)
+	if err != nil {
+		return nil, err
+	}
+	var items []bible.Verse
+	lastVerse := 0
+	doc.Find("p").Each(func(i int, p *goquery.Selection) {
+		if _, hidden := p.Attr("hidden"); hidden {
+			return
+		}
+		if p.HasClass("loading") || p.HasClass("error") {
+			return
+		}
+		content := strings.TrimSpace(p.Find("[data-begin]").First().Text())
+		title := strings.TrimSpace(p.Find(".paragraphtitle").First().Text())
+		verseText := strings.TrimSpace(p.Find(".reftext").Children().First().Text())
+		verse := 0
+		if verseText != "" {
+			verse, _ = strconv.Atoi(verseText)
+		}
+		if title == "" && content == "" {
+			p.Find(".reftext").Remove()
+			content = strings.TrimSpace(p.Text())
+		}
+		var typ string
+		switch {
+		case title != "":
+			typ = "title"
+			content = title
+			verse = lastVerse + 1
+		case content != "":
+			typ = "content"
+			lastVerse = verse
+		}
+		if typ != "" {
+			items = append(items, bible.Verse{Number: verse, Content: content, Type: typ, Order: i})
+		}
+	})
+	return items, nil
+}
+
+func versionSupported(v string) bool {
+	for _, t := range staticVersions {
+		if t.ID == v {
+			return true
+		}
+	}
+	return false
+}
