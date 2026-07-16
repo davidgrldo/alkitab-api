@@ -1,0 +1,11 @@
+# opencode / superpowers scratch
+.superpowers/
+
+# go binaries
+/alkitab-api
+*.exe
+*.test
+*.out
+
+# os
+.DS_Store
