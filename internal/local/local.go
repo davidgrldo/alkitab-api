@@ -130,3 +130,28 @@ func (l *Local) Chapter(version, book string, chapter int) (*bible.Chapter, erro
 	}
 	return c, nil
 }
+
+// AllVerses flattens a translation's corpus into VerseHit order.
+// Books are emitted in the order they appear in the JSON; within a chapter,
+// verses are emitted in stored order.
+func (l *Local) AllVerses(version string) ([]bible.VerseHit, error) {
+	td, ok := l.data[version]
+	if !ok {
+		return nil, bible.ErrUnsupportedVersion
+	}
+	var out []bible.VerseHit
+	for _, b := range td.Books {
+		for ch := 1; ch <= b.Chapters; ch++ {
+			c, ok := td.Chapters[fmt.Sprintf("%s:%d", b.ID, ch)]
+			if !ok {
+				continue
+			}
+			for _, v := range c.Verses {
+				out = append(out, bible.VerseHit{
+					Translation: version, Book: b.ID, Chapter: ch, Verse: v,
+				})
+			}
+		}
+	}
+	return out, nil
+}

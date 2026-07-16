@@ -63,3 +63,20 @@ func TestLocalRuntimeDirOverrides(t *testing.T) {
 		t.Errorf("runtime override failed: %+v", trans)
 	}
 }
+
+func TestLocalAllVerses(t *testing.T) {
+	l, _ := New("")
+	all, err := l.AllVerses("kjv")
+	if err != nil {
+		t.Fatalf("AllVerses: %v", err)
+	}
+	// 3 John (14) + Philemon (25) = 39
+	if len(all) != 39 {
+		t.Errorf("want 39 verses in sample corpus, got %d", len(all))
+	}
+	for _, h := range all {
+		if h.Translation != "kjv" {
+			t.Errorf("hit translation = %q", h.Translation)
+		}
+	}
+}
