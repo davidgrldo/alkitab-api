@@ -21,6 +21,9 @@ func New(src Source) *Engine {
 	return &Engine{src: src, cache: make(map[string]*Chapter)}
 }
 
+// Source returns the underlying source (used by the server for listings).
+func (e *Engine) Source() Source { return e.src }
+
 func chapterKey(version, book string, chapter int) string {
 	return fmt.Sprintf("%s:%s:%d", version, book, chapter)
 }
