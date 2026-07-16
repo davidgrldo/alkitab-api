@@ -43,3 +43,36 @@ func TestEngineChapterCache(t *testing.T) {
 		t.Errorf("source called %d times, want 1 (cached)", f.calls)
 	}
 }
+
+type fakeCorpus struct{ all []VerseHit }
+
+func (f *fakeCorpus) AllVerses(version string) ([]VerseHit, error) { return f.all, nil }
+
+func TestEngineSearchUnsupported(t *testing.T) {
+	e := New(newFake()) // fakeSource is not a Corpus
+	if _, err := e.Search("kjv", "love"); err != ErrUnsupportedFeature {
+		t.Errorf("want ErrUnsupportedFeature, got %v", err)
+	}
+}
+
+func TestEngineSearch(t *testing.T) {
+	f := newFake()
+	all := []VerseHit{
+		{Translation: "kjv", Book: "3john", Chapter: 1, Verse: Verse{Number: 1, Content: "God is love", Type: "content"}},
+		{Translation: "kjv", Book: "3john", Chapter: 1, Verse: Verse{Number: 2, Content: "Walk in truth", Type: "content"}},
+	}
+	// attach corpus capability by composition
+	src := struct {
+		*fakeSource
+		*fakeCorpus
+	}{f, &fakeCorpus{all}}
+	e := New(src)
+
+	hits, err := e.Search("kjv", "LOVE")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(hits) != 1 || hits[0].Verse.Content != "God is love" {
+		t.Errorf("unexpected hits: %+v", hits)
+	}
+}

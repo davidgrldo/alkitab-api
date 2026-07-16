@@ -2,6 +2,7 @@ package bible
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -37,4 +38,29 @@ func (e *Engine) Chapter(version, book string, chapter int) (*Chapter, error) {
 	e.cache[key] = c
 	e.mu.Unlock()
 	return c, nil
+}
+
+func (e *Engine) corpus() (Corpus, bool) {
+	c, ok := e.src.(Corpus)
+	return c, ok
+}
+
+// Search returns verses whose content contains query (case-insensitive).
+func (e *Engine) Search(version, query string) ([]VerseHit, error) {
+	c, ok := e.corpus()
+	if !ok {
+		return nil, ErrUnsupportedFeature
+	}
+	all, err := c.AllVerses(version)
+	if err != nil {
+		return nil, err
+	}
+	q := strings.ToLower(query)
+	var hits []VerseHit
+	for _, h := range all {
+		if strings.Contains(strings.ToLower(h.Verse.Content), q) {
+			hits = append(hits, h)
+		}
+	}
+	return hits, nil
 }
