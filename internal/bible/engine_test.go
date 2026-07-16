@@ -1,6 +1,9 @@
 package bible
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func newFake() *fakeSource {
 	return &fakeSource{
@@ -74,5 +77,57 @@ func TestEngineSearch(t *testing.T) {
 	}
 	if len(hits) != 1 || hits[0].Verse.Content != "God is love" {
 		t.Errorf("unexpected hits: %+v", hits)
+	}
+}
+
+func TestEngineDailyDeterministic(t *testing.T) {
+	all := []VerseHit{
+		{Translation: "kjv", Book: "3john", Chapter: 1, Verse: Verse{Number: 1, Content: "a", Type: "content"}},
+		{Translation: "kjv", Book: "3john", Chapter: 1, Verse: Verse{Number: 2, Content: "b", Type: "content"}},
+		{Translation: "kjv", Book: "phlm", Chapter: 1, Verse: Verse{Number: 1, Content: "c", Type: "content"}},
+	}
+	src := struct {
+		*fakeSource
+		*fakeCorpus
+	}{newFake(), &fakeCorpus{all}}
+	e := New(src)
+
+	d := time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)
+	h1, err := e.DailyVerse("kjv", d)
+	if err != nil {
+		t.Fatalf("DailyVerse: %v", err)
+	}
+	h2, _ := e.DailyVerse("kjv", d)
+	if *h1 != *h2 {
+		t.Errorf("same date must yield same verse: %v vs %v", h1, h2)
+	}
+	// different date should very likely differ over a few samples (not asserted strictly)
+	_ = h1
+}
+
+func TestEngineRandomInBounds(t *testing.T) {
+	all := []VerseHit{
+		{Translation: "kjv", Book: "3john", Chapter: 1, Verse: Verse{Number: 1, Content: "a", Type: "content"}},
+	}
+	src := struct {
+		*fakeSource
+		*fakeCorpus
+	}{newFake(), &fakeCorpus{all}}
+	e := New(src)
+	for i := 0; i < 50; i++ {
+		h, err := e.RandomVerse("kjv")
+		if err != nil {
+			t.Fatalf("RandomVerse: %v", err)
+		}
+		if h == nil {
+			t.Fatal("nil hit")
+		}
+	}
+}
+
+func TestEngineDailyUnsupported(t *testing.T) {
+	e := New(newFake())
+	if _, err := e.DailyVerse("kjv", time.Now()); err != ErrUnsupportedFeature {
+		t.Errorf("want ErrUnsupportedFeature, got %v", err)
 	}
 }

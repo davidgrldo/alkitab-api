@@ -2,8 +2,11 @@ package bible
 
 import (
 	"fmt"
+	"hash/fnv"
+	"math/rand/v2"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Engine wraps a Source with a chapter cache and corpus-backed operations.
@@ -63,4 +66,46 @@ func (e *Engine) Search(version, query string) ([]VerseHit, error) {
 		}
 	}
 	return hits, nil
+}
+
+// DailyVerse returns a deterministic verse for the given date and version:
+// seed = fnv(date+version) % len(corpus). Same date+version always agrees.
+func (e *Engine) DailyVerse(version string, t time.Time) (*VerseHit, error) {
+	c, ok := e.corpus()
+	if !ok {
+		return nil, ErrUnsupportedFeature
+	}
+	all, err := c.AllVerses(version)
+	if err != nil {
+		return nil, err
+	}
+	if len(all) == 0 {
+		return nil, ErrNotFound
+	}
+	seed := hashSeed(fmt.Sprintf("%04d%02d%02d%s", t.Year(), int(t.Month()), t.Day(), version))
+	h := all[seed%uint32(len(all))]
+	return &h, nil
+}
+
+// RandomVerse returns an unpredictable verse. Auto-seeded via math/rand/v2.
+func (e *Engine) RandomVerse(version string) (*VerseHit, error) {
+	c, ok := e.corpus()
+	if !ok {
+		return nil, ErrUnsupportedFeature
+	}
+	all, err := c.AllVerses(version)
+	if err != nil {
+		return nil, err
+	}
+	if len(all) == 0 {
+		return nil, ErrNotFound
+	}
+	h := all[rand.IntN(len(all))]
+	return &h, nil
+}
+
+func hashSeed(s string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(s))
+	return h.Sum32()
 }
