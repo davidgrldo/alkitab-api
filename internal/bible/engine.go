@@ -1,6 +1,7 @@
 package bible
 
 import (
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"math/rand/v2"
@@ -108,4 +109,62 @@ func hashSeed(s string) uint32 {
 	h := fnv.New32a()
 	h.Write([]byte(s))
 	return h.Sum32()
+}
+
+// Chain is a Source that delegates to members in order, returning the first
+// non-ErrNotFound result. Books/Translations are merged across members.
+type Chain struct {
+	sources []Source
+}
+
+func NewChain(sources ...Source) *Chain {
+	return &Chain{sources: sources}
+}
+
+func (c *Chain) Translations() []Translation {
+	var out []Translation
+	seen := map[string]bool{}
+	for _, s := range c.sources {
+		for _, t := range s.Translations() {
+			if !seen[t.ID] {
+				seen[t.ID] = true
+				out = append(out, t)
+			}
+		}
+	}
+	return out
+}
+
+func (c *Chain) Books(version string) ([]Book, error) {
+	for _, s := range c.sources {
+		b, err := s.Books(version)
+		if err == nil {
+			return b, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
+func (c *Chain) Chapter(version, book string, chapter int) (*Chapter, error) {
+	for _, s := range c.sources {
+		ch, err := s.Chapter(version, book, chapter)
+		if err == nil {
+			return ch, nil
+		}
+		if !errors.Is(err, ErrNotFound) {
+			return nil, err
+		}
+	}
+	return nil, ErrNotFound
+}
+
+// AllVerses delegates to the first member that implements Corpus, so that
+// Search/Daily/Random keep working when local and scrape are chained.
+func (c *Chain) AllVerses(version string) ([]VerseHit, error) {
+	for _, s := range c.sources {
+		if corp, ok := s.(Corpus); ok {
+			return corp.AllVerses(version)
+		}
+	}
+	return nil, ErrUnsupportedFeature
 }

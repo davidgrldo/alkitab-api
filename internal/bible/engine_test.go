@@ -131,3 +131,42 @@ func TestEngineDailyUnsupported(t *testing.T) {
 		t.Errorf("want ErrUnsupportedFeature, got %v", err)
 	}
 }
+
+func TestChainFallback(t *testing.T) {
+	primary := newFake() // has kjv:3john:1 only
+	missSrc := &fakeSource{
+		trans: []Translation{{ID: "tb", Name: "TB", Language: "id"}},
+		chaps: map[string]*Chapter{
+			"tb:3john:1": {Translation: "tb", Book: "3john", Number: 1,
+				Verses: []Verse{{Number: 1, Content: "Kepala Jemaat", Type: "content"}}},
+		},
+	}
+	ch := NewChain(primary, missSrc)
+
+	// hit on primary
+	c, err := ch.Chapter("kjv", "3john", 1)
+	if err != nil || c.Translation != "kjv" {
+		t.Errorf("primary miss/err: %v %v", c, err)
+	}
+	// miss on primary (kjv:genesis:1), hit on secondary
+	c, err = ch.Chapter("tb", "3john", 1)
+	if err != nil || c.Translation != "tb" {
+		t.Errorf("fallback err: %v %v", c, err)
+	}
+	// all miss
+	_, err = ch.Chapter("x", "y", 1)
+	if err != ErrNotFound {
+		t.Errorf("want ErrNotFound, got %v", err)
+	}
+}
+
+func TestChainTranslationsMerged(t *testing.T) {
+	ch := NewChain(
+		&fakeSource{trans: []Translation{{ID: "kjv"}}},
+		&fakeSource{trans: []Translation{{ID: "tb"}}},
+	)
+	got := ch.Translations()
+	if len(got) != 2 {
+		t.Errorf("want 2 translations merged, got %d", len(got))
+	}
+}
