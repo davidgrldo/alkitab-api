@@ -95,7 +95,11 @@ func (s *Server) chapterVerse(w http.ResponseWriter, r *http.Request) {
 		s.mapErr(w, err)
 		return
 	}
-	vn, _ := strconv.Atoi(r.PathValue("verse"))
+	vn, err := strconv.Atoi(r.PathValue("verse"))
+	if err != nil {
+		s.mapErr(w, badRequest("invalid verse"))
+		return
+	}
 	var filtered []bible.Verse
 	for _, v := range c.Verses {
 		if v.Number == vn {

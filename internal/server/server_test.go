@@ -68,6 +68,11 @@ func TestBadChapter(t *testing.T) {
 	getJSON(t, h, "/v1/kjv/3john/abc", 400)
 }
 
+func TestBadVerse(t *testing.T) {
+	h := newServer(t).Handler()
+	getJSON(t, h, "/v1/kjv/3john/1/abc", 400)
+}
+
 func TestSingleVerse(t *testing.T) {
 	h := newServer(t).Handler()
 	m := getJSON(t, h, "/v1/kjv/3john/1/4", 200)
