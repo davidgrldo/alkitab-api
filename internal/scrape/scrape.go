@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -23,11 +24,21 @@ var staticVersions = []bible.Translation{
 	{ID: "tb", Name: "Terjemahan Baru", Language: "id"},
 }
 
+// userAgent identifies this proxy to the upstream site.
+const userAgent = "alkitab-api (+https://github.com/davidgrldo/alkitab-api)"
+
+// minInterval spaces out upstream requests so a burst of API traffic does not
+// hammer alkitab.mobi. Cache misses are the only thing that reaches upstream.
+const minInterval = 500 * time.Millisecond
+
 // Scrape is a bible.Source that fetches chapters from alkitab.mobi.
 // It does NOT implement Corpus (per-query scrape search is infeasible).
 type Scrape struct {
 	base   string
 	client *http.Client
+
+	mu   sync.Mutex
+	last time.Time
 }
 
 func New(baseURL string) *Scrape {
@@ -38,6 +49,17 @@ func New(baseURL string) *Scrape {
 }
 
 func (s *Scrape) Translations() []bible.Translation { return staticVersions }
+
+// throttle enforces minInterval between upstream requests.
+// ponytail: menahan lock selama sleep memang menserikan semua permintaan upstream — itu intinya proxy yang sopan.
+func (s *Scrape) throttle() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if wait := minInterval - time.Since(s.last); wait > 0 {
+		time.Sleep(wait)
+	}
+	s.last = time.Now()
+}
 
 func (s *Scrape) Books(version string) ([]bible.Book, error) {
 	if !versionSupported(version) {
@@ -55,7 +77,13 @@ func (s *Scrape) Chapter(version, book string, chapter int) (*bible.Chapter, err
 		return nil, bible.ErrNotFound
 	}
 	url := strings.Join([]string{s.base, version, bookName, strconv.Itoa(chapter)}, "/")
-	res, err := s.client.Get(url)
+	s.throttle()
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, errors.New("scrape: upstream request failed")
+	}
+	req.Header.Set("User-Agent", userAgent)
+	res, err := s.client.Do(req)
 	if err != nil {
 		return nil, errors.New("scrape: upstream request failed")
 	}

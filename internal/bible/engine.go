@@ -44,10 +44,21 @@ func (e *Engine) Chapter(version, book string, chapter int) (*Chapter, error) {
 		return nil, err
 	}
 	e.mu.Lock()
+	// ponytail: naive cap dengan eviksi sembarang — mencegah memori tumbuh tanpa batas
+	// pada server berumur panjang dengan source scrape; upgrade ke LRU jika hit-rate mulai penting.
+	if len(e.cache) >= maxCacheEntries {
+		for k := range e.cache {
+			delete(e.cache, k)
+			break
+		}
+	}
 	e.cache[key] = c
 	e.mu.Unlock()
 	return c, nil
 }
+
+// maxCacheEntries ≈ jumlah pasal satu Alkitab penuh (1.189) dengan ruang lega.
+const maxCacheEntries = 2048
 
 func (e *Engine) corpus() (Corpus, bool) {
 	c, ok := e.src.(Corpus)
