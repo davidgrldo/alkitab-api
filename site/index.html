@@ -1,0 +1,713 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>alkitab-api — Teks suci sebagai layanan</title>
+<meta name="description" content="API Alkitab berbasis Go dengan arsitektur adapter. Local JSON sebagai default, scrape alkitab.mobi sebagai opsi. Tanpa pernah mendistribusikan teks berhak cipta." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --paper:#f5efe1;        /* warm parchment */
+    --paper-2:#efe7d4;      /* deeper band */
+    --surface:#fbf7ec;      /* card / code surface */
+    --ink:#1c1813;          /* warm near-black */
+    --ink-2:#6f6557;        /* muted sepia gray */
+    --ink-3:#a3977f;        /* faint */
+    --rule:#ddd2b8;         /* parchment hairline */
+    --rule-2:#c9bb9a;
+    --accent:#9a3b2d;       /* manuscript rubric red */
+    --olive:#64703f;        /* default/local semantic */
+    --gold:#9a7b2e;
+    --maxw:1180px;
+    --ease:cubic-bezier(.16,1,.3,1);
+    --serif:"Fraunces","Newsreader",Georgia,serif;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--serif);
+    font-optical-sizing:auto;
+    font-size:18px;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    overflow-x:hidden;
+  }
+  /* paper grain — fixed, pointer-events none */
+  body::before{
+    content:"";position:fixed;inset:0;z-index:60;pointer-events:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.11 0 0 0 0 0.09 0 0 0 0 0.07 0 0 0 0.5 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    opacity:.045;mix-blend-mode:multiply;
+  }
+  /* warm ambient glow behind hero */
+  body::after{
+    content:"";position:fixed;top:-20vh;left:50%;transform:translateX(-50%);
+    width:120vw;height:80vh;z-index:-1;pointer-events:none;
+    background:radial-gradient(ellipse at center,rgba(154,59,45,.06),rgba(154,59,45,0) 60%);
+  }
+  a{color:inherit;text-decoration:none}
+  ::selection{background:var(--accent);color:var(--paper)}
+
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
+  .mono{font-family:var(--mono)}
+
+  /* eyebrow tag */
+  .eyebrow{
+    font-family:var(--mono);font-size:11px;font-weight:500;
+    letter-spacing:.22em;text-transform:uppercase;color:var(--ink-2);
+    display:inline-flex;align-items:center;gap:9px;
+  }
+  .eyebrow::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent)}
+
+  /* reveal animation */
+  .reveal{opacity:0;transform:translateY(18px);transition:opacity .8s var(--ease),transform .8s var(--ease)}
+  .reveal.in{opacity:1;transform:none}
+
+  /* NAV */
+  nav{
+    position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:50;
+    display:flex;align-items:center;gap:6px;
+    background:rgba(251,247,236,.78);backdrop-filter:blur(14px);
+    border:1px solid var(--rule);border-radius:999px;
+    padding:8px 8px 8px 22px;
+    box-shadow:0 1px 0 rgba(255,255,255,.6) inset,0 8px 30px rgba(28,24,19,.05);
+    transition:transform .5s var(--ease),background .4s var(--ease);
+    max-width:calc(100vw - 24px);
+  }
+  nav .wm{font-weight:600;letter-spacing:-.01em;font-size:16px;padding-right:8px;white-space:nowrap}
+  nav .wm span{color:var(--accent)}
+  nav .links{display:flex;align-items:center;gap:2px}
+  nav .links a{
+    font-family:var(--mono);font-size:12px;letter-spacing:.04em;
+    color:var(--ink-2);padding:8px 12px;border-radius:999px;transition:color .25s,background .25s;
+    white-space:nowrap;
+  }
+  nav .links a:hover{color:var(--ink);background:rgba(28,24,19,.05)}
+  nav .gh{
+    font-family:var(--mono);font-size:12px;font-weight:500;
+    background:var(--ink);color:var(--paper);padding:9px 16px;border-radius:999px;
+    transition:transform .2s var(--ease),background .25s;
+  }
+  nav .gh:hover{transform:scale(.97);background:#000}
+  nav.collapsed{transform:translateX(-50%) translateY(-130%)}
+  @media(max-width:760px){
+    nav .links{display:none}
+    nav{padding:8px 8px 8px 18px}
+  }
+
+  /* HERO */
+  header.hero{padding:190px 0 120px;position:relative}
+  .hero-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:60px;align-items:center}
+  .hero h1{
+    font-family:var(--serif);font-weight:500;font-size:clamp(44px,6.4vw,86px);
+    line-height:1.02;letter-spacing:-.035em;margin:26px 0 0;color:var(--ink);
+    font-variation-settings:"opsz" 120;
+  }
+  .hero h1 em{font-style:italic;color:var(--accent);font-weight:400}
+  .hero p.lead{
+    margin-top:30px;max-width:520px;font-size:20px;line-height:1.55;color:var(--ink-2);
+  }
+  .hero p.lead code{font-family:var(--mono);font-size:.86em;background:var(--paper-2);
+    padding:1px 6px;border-radius:5px;border:1px solid var(--rule);color:var(--ink)}
+  .hero .cta{display:flex;gap:14px;margin-top:38px;flex-wrap:wrap}
+  .btn{
+    display:inline-flex;align-items:center;gap:10px;font-family:var(--mono);
+    font-size:13.5px;font-weight:500;letter-spacing:.02em;
+    padding:14px 20px;border-radius:8px;transition:transform .2s var(--ease),background .25s,color .25s;
+    border:1px solid transparent;
+  }
+  .btn.primary{background:var(--ink);color:var(--paper)}
+  .btn.primary:hover{transform:scale(.98);background:#000}
+  .btn.ghost{background:transparent;color:var(--ink);border-color:var(--rule-2)}
+  .btn.ghost:hover{background:var(--paper-2)}
+  .btn .arrow{width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.14);
+    display:grid;place-items:center;transition:transform .25s var(--ease)}
+  .btn.primary:hover .arrow{transform:translate(2px,-1px)}
+  .btn.ghost .arrow{background:rgba(28,24,19,.07)}
+
+  /* hero terminal card */
+  .term{
+    background:var(--surface);border:1px solid var(--rule);border-radius:14px;overflow:hidden;
+    box-shadow:0 1px 0 rgba(255,255,255,.7) inset,0 22px 50px -28px rgba(28,24,19,.28);
+  }
+  .term-bar{display:flex;align-items:center;gap:7px;padding:13px 16px;border-bottom:1px solid var(--rule);background:var(--paper-2)}
+  .term-bar i{width:11px;height:11px;border-radius:50%;background:var(--rule-2);display:block}
+  .term-bar i:nth-child(1){background:#c98a83}i:nth-child(2){background:#cdb377}i:nth-child(3){background:#9ea877}
+  .term-bar .fn{margin-left:10px;font-family:var(--mono);font-size:11.5px;color:var(--ink-2);letter-spacing:.02em}
+  .term pre{margin:0;padding:20px 22px;font-family:var(--mono);font-size:12.8px;line-height:1.85;color:var(--ink);overflow-x:auto}
+  .term pre .c{color:var(--ink-3)}            /* comment */
+  .term pre .p{color:var(--accent)}            /* prompt / punct accent */
+  .term pre .k{color:var(--olive)}             /* key */
+  .term pre .s{color:var(--gold)}              /* string value */
+
+  /* generic section */
+  section{padding:110px 0;position:relative}
+  section.band{background:var(--paper-2)}
+  .sec-head{max-width:680px;margin-bottom:64px}
+  .sec-head h2{
+    font-family:var(--serif);font-weight:500;font-size:clamp(30px,3.6vw,46px);
+    line-height:1.08;letter-spacing:-.028em;margin-top:20px;font-variation-settings:"opsz" 80;
+  }
+  .sec-head p{margin-top:20px;color:var(--ink-2);font-size:18px;max-width:560px}
+  .index{font-family:var(--mono);font-size:12px;color:var(--accent);letter-spacing:.1em}
+
+  /* philosophy pillars */
+  .pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-top:1px solid var(--rule)}
+  .pillar{padding:42px 34px 42px 0;border-bottom:1px solid var(--rule);position:relative}
+  .pillar:not(:last-child){padding-right:34px}
+  .pillar:not(:last-child)::after{content:"";position:absolute;top:42px;bottom:42px;right:0;width:1px;background:var(--rule)}
+  .pillar .n{font-family:var(--mono);font-size:12px;color:var(--accent);letter-spacing:.1em}
+  .pillar h3{font-family:var(--serif);font-weight:500;font-size:23px;letter-spacing:-.02em;margin:18px 0 12px;line-height:1.2}
+  .pillar p{color:var(--ink-2);font-size:16px;line-height:1.6}
+
+  /* token strip (brandkit-in-code) */
+  .tokens{display:grid;grid-template-columns:1.1fr .9fr;gap:48px;align-items:start;margin-top:54px}
+  .swatches{display:grid;grid-template-columns:repeat(6,1fr);gap:14px}
+  .sw{display:flex;flex-direction:column;gap:9px}
+  .sw .chip{height:62px;border-radius:9px;border:1px solid var(--rule)}
+  .sw .lab{font-family:var(--mono);font-size:10.5px;color:var(--ink-2);line-height:1.3}
+  .sw .lab b{color:var(--ink);font-weight:500}
+  .specimen{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:30px}
+  .specimen .row{display:flex;align-items:baseline;justify-content:space-between;gap:18px;padding:13px 0;border-bottom:1px solid var(--rule)}
+  .specimen .row:last-child{border-bottom:0}
+  .specimen .row .lbl{font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+  .specimen .serif-sm{font-family:var(--serif);font-size:24px;letter-spacing:-.02em}
+  .specimen .serif-sm em{font-style:italic;color:var(--accent)}
+  .specimen .mono-sm{font-family:var(--mono);font-size:17px}
+
+  /* ARCHITECTURE DIAGRAM */
+  .arch{display:grid;grid-template-columns:1fr;gap:0;margin-top:10px}
+  .arch-band{
+    display:grid;grid-template-columns:160px 1fr;gap:30px;align-items:stretch;
+    padding:30px 0;border-top:1px solid var(--rule);transition:background .4s var(--ease);
+  }
+  .arch-band:last-child{border-bottom:1px solid var(--rule)}
+  .arch-band.active{background:rgba(154,59,45,.035)}
+  .arch-meta .tag{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+  .arch-band.active .arch-meta .tag{color:var(--accent)}
+  .arch-meta .layer{font-family:var(--serif);font-weight:500;font-size:26px;letter-spacing:-.02em;margin-top:8px;line-height:1.1}
+  .arch-meta .desc{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);margin-top:8px;line-height:1.5}
+  .arch-nodes{display:flex;gap:14px;flex-wrap:wrap;align-items:stretch}
+  .node{
+    flex:1 1 0;min-width:0;background:var(--surface);border:1px solid var(--rule);
+    border-radius:12px;padding:20px 22px;transition:transform .3s var(--ease),border-color .3s,box-shadow .3s;
+    position:relative;
+  }
+  .node:hover{transform:translateY(-3px);border-color:var(--rule-2);box-shadow:0 14px 30px -22px rgba(28,24,19,.3)}
+  .node .nh{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .node .nm{font-family:var(--mono);font-size:14px;font-weight:500;letter-spacing:-.01em}
+  .badge{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid var(--rule)}
+  .badge.def{color:var(--olive);border-color:rgba(100,112,63,.4);background:rgba(100,112,63,.08)}
+  .badge.opt{color:var(--accent);border-color:rgba(154,59,45,.35);background:rgba(154,59,45,.07)}
+  .badge.corpus{color:var(--gold);border-color:rgba(154,123,46,.4);background:rgba(154,123,46,.08)}
+  .node p{font-size:13.5px;color:var(--ink-2);margin-top:11px;line-height:1.5}
+  .node .pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:13px}
+  .node .pills span{font-family:var(--mono);font-size:10.5px;color:var(--ink-2);background:var(--paper-2);border:1px solid var(--rule);padding:3px 8px;border-radius:6px}
+
+  .arrow-flow{
+    display:grid;grid-template-columns:160px 1fr;gap:30px;align-items:center;
+    padding:0;border-top:0;
+  }
+  .arrow-flow .lbl{font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:.1em;text-transform:uppercase}
+  .arrow-line{display:flex;align-items:center;gap:14px;color:var(--ink-3);font-family:var(--mono);font-size:11px;letter-spacing:.1em}
+  .arrow-line .ln{flex:1;height:1px;background:var(--rule-2);position:relative}
+  .arrow-line .ln::before,.arrow-line .ln::after{content:"";position:absolute;top:-3px;width:7px;height:7px;border:1px solid var(--rule-2);transform:rotate(45deg)}
+  .arrow-line .ln.down::before{left:-1px;border-right:0;border-top:0}
+  .arrow-line .ln.up::after{right:-1px;border-left:0;border-bottom:0}
+
+  /* request lifecycle */
+  .lifecycle{display:grid;grid-template-columns:1fr;gap:0;margin-top:10px}
+  .step{display:grid;grid-template-columns:54px 1fr;gap:24px;padding:26px 0;border-top:1px solid var(--rule)}
+  .step:last-child{border-bottom:1px solid var(--rule)}
+  .step .num{font-family:var(--serif);font-style:italic;font-size:34px;color:var(--accent);line-height:1;font-variation-settings:"opsz" 80}
+  .step h4{font-family:var(--mono);font-size:13.5px;font-weight:500;letter-spacing:-.01em}
+  .step h4 code{font-family:var(--mono);color:var(--accent)}
+  .step p{color:var(--ink-2);font-size:15px;margin-top:7px;max-width:560px}
+
+  /* endpoint bento */
+  .ep-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+  .ep{
+    grid-column:span 4;background:var(--surface);border:1px solid var(--rule);border-radius:12px;
+    padding:22px 22px 20px;transition:transform .3s var(--ease),border-color .3s,box-shadow .3s;
+    display:flex;flex-direction:column;gap:11px;
+  }
+  .ep:hover{transform:translateY(-3px);border-color:var(--rule-2);box-shadow:0 16px 32px -24px rgba(28,24,19,.32)}
+  .ep.wide{grid-column:span 6}
+  .ep.full{grid-column:span 12}
+  .ep .m{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--paper);background:var(--olive);padding:3px 9px;border-radius:5px;width:max-content}
+  .ep .path{font-family:var(--mono);font-size:14px;color:var(--ink);word-break:break-all;line-height:1.4}
+  .ep .path .v{color:var(--accent)}
+  .ep .ttl{font-family:var(--serif);font-size:18px;font-weight:500;letter-spacing:-.015em;margin-top:2px}
+  .ep p{font-size:14px;color:var(--ink-2);line-height:1.5}
+
+  /* demo */
+  .demo-wrap{display:grid;grid-template-columns:1fr;gap:24px}
+  .demo-bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .demo-bar .hint{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+  .demo-bar .hint code{font-family:var(--mono);background:var(--surface);border:1px solid var(--rule);padding:2px 7px;border-radius:5px;color:var(--ink)}
+  .demo-out{min-height:120px}
+  .demo-note{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);margin-top:14px;letter-spacing:.02em}
+
+  /* byod */
+  .byod{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+  .pull{font-family:var(--serif);font-style:italic;font-weight:400;font-size:clamp(26px,3vw,38px);line-height:1.25;letter-spacing:-.02em;color:var(--ink);font-variation-settings:"opsz" 100}
+  .pull em{font-style:italic;color:var(--accent)}
+
+  /* footer */
+  footer{padding:90px 0 60px;border-top:1px solid var(--rule)}
+  .ft-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:40px}
+  footer .wm{font-family:var(--serif);font-size:22px;font-weight:500;letter-spacing:-.02em}
+  footer .wm span{color:var(--accent)}
+  footer .sub{color:var(--ink-2);font-size:14.5px;margin-top:12px;max-width:340px}
+  footer h5{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin-bottom:14px}
+  footer ul{list-style:none;display:flex;flex-direction:column;gap:9px}
+  footer ul a{font-family:var(--mono);font-size:13px;color:var(--ink-2);transition:color .2s}
+  footer ul a:hover{color:var(--accent)}
+  .legal{margin-top:54px;padding-top:22px;border-top:1px solid var(--rule);font-family:var(--mono);font-size:11.5px;color:var(--ink-3);line-height:1.7}
+  .legal b{color:var(--ink-2);font-weight:500}
+
+  @media(max-width:880px){
+    .hero-grid,.tokens,.byod,.ft-grid{grid-template-columns:1fr;gap:40px}
+    .pillars{grid-template-columns:1fr}
+    .pillar:not(:last-child)::after{display:none}
+    .ep{grid-column:span 12!important}
+    .arch-band,.arrow-flow{grid-template-columns:1fr;gap:14px}
+    section{padding:74px 0}
+    header.hero{padding:140px 0 70px}
+    .swatches{grid-template-columns:repeat(3,1fr)}
+  }
+</style>
+</head>
+<body>
+
+<nav id="nav">
+  <a class="wm" href="#top">alkitab<span>-api</span></a>
+  <div class="links">
+    <a href="#filosofi">Filosofi</a>
+    <a href="#arsitektur">Arsitektur</a>
+    <a href="#lifecycle">Siklus</a>
+    <a href="#endpoint">Endpoint</a>
+    <a href="#demo">Demo</a>
+  </div>
+  <a class="gh" href="https://github.com/davidgrldo/alkitab-api" target="_blank" rel="noopener">GitHub ↗</a>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div class="reveal">
+        <span class="eyebrow">Bible API · Go · Open Source</span>
+        <h1>Satu mesin,<br>banyak <em>sumber</em>.</h1>
+        <p class="lead">API Alkitab berbasis Go dengan arsitektur adapter — <code>local</code> JSON sebagai default, <code>scrape</code> alkitab.mobi sebagai opsi. Satu binari, tanpa database, tanpa pernah mendistribusikan teks berhak cipta.</p>
+        <div class="cta">
+          <a class="btn primary" href="https://github.com/davidgrldo/alkitab-api" target="_blank" rel="noopener">
+            Lihat di GitHub <span class="arrow">↗</span>
+          </a>
+          <a class="btn ghost" href="#arsitektur">Jelajahi arsitektur <span class="arrow">↓</span></a>
+        </div>
+      </div>
+      <div class="term reveal" style="transition-delay:.1s">
+        <div class="term-bar"><i></i><i></i><i></i><span class="fn">~/alkitab-api</span></div>
+<pre><span class="c"># jalankan dalam satu baris</span>
+<span class="p">$</span> go run ./cmd/alkitab-api
+  → listening on :3000 (scrape=<span class="k">false</span>)
+
+<span class="c"># ambil satu pasal</span>
+<span class="p">$</span> curl localhost:3000/v1/kjv/3john/1
+{
+  <span class="k">"version"</span>: <span class="s">"kjv"</span>,
+  <span class="k">"verses"</span>: [
+    { <span class="k">"verse"</span>: <span class="s">4</span>,
+      <span class="k">"content"</span>: <span class="s">"I have no greater joy…"</span> }
+  ]
+}</pre>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="filosofi">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="index">01 — Filosofi</div>
+      <h2>Dibangun ulang dari nol, melepaskan satu dependensi.</h2>
+      <p><i>sonnylazuardi/alkitab-api</i> mengikis HTML alkitab.mobi setiap ada permintaan. Proyek ini memindahkan teks ke penyimpanan lokal dan menjadikan mesinnya agnostik terhadap sumber.</p>
+    </div>
+    <div class="pillars reveal">
+      <div class="pillar">
+        <div class="n">i.</div>
+        <h3>Bring Your Own Data</h3>
+        <p>Mesin tidak membawa teks berhak cipta. Cukup letakkan berkas JSON di <code class="mono" style="font-size:13px">ALKITAB_DATA_DIR</code> dan ia langsung terbaca di samping contoh domain-publik yang sudah tertanam.</p>
+      </div>
+      <div class="pillar">
+        <div class="n">ii.</div>
+        <h3>Scrape adalah opt-in</h3>
+        <p>Akses ke Terjemahan Baru tetap mungkin lewat adapter <code class="mono" style="font-size:13px">scrape</code> yang diaktifkan dengan <code class="mono" style="font-size:13px">ALKITAB_SCRAPE=1</code> — sekadar proxy saat runtime, tanpa redistribusi.</p>
+      </div>
+      <div class="pillar">
+        <div class="n">iii.</div>
+        <h3>Tiga lapis, satu arah</h3>
+        <p>Transport, mesin, adapter. Dependensi hanya mengalir ke dalam. Itu yang membuat BYOD dan opt-in scrape bekerja tanpa menulis ulang inti.</p>
+      </div>
+    </div>
+
+    <div class="tokens reveal">
+      <div>
+        <div class="eyebrow" style="margin-bottom:20px">Design tokens</div>
+        <div class="swatches">
+          <div class="sw"><div class="chip" style="background:#f5efe1"></div><div class="lab"><b>Paper</b><br>#F5EFE1</div></div>
+          <div class="sw"><div class="chip" style="background:#efe7d4"></div><div class="lab"><b>Paper-2</b><br>#EFE7D4</div></div>
+          <div class="sw"><div class="chip" style="background:#1c1813"></div><div class="lab"><b>Ink</b><br>#1C1813</div></div>
+          <div class="sw"><div class="chip" style="background:#9a3b2d"></div><div class="lab"><b>Rubric</b><br>#9A3B2D</div></div>
+          <div class="sw"><div class="chip" style="background:#64703f"></div><div class="lab"><b>Olive</b><br>#64703F</div></div>
+          <div class="sw"><div class="chip" style="background:#9a7b2e"></div><div class="lab"><b>Gold</b><br>#9A7B2E</div></div>
+        </div>
+      </div>
+      <div class="specimen">
+        <div class="row"><span class="lbl">Display · Fraunces</span><span class="serif-sm">Teks <em>suci</em></span></div>
+        <div class="row"><span class="lbl">Body · Fraunces</span><span class="serif-sm" style="font-size:18px">ayat yang berbicara</span></div>
+        <div class="row"><span class="lbl">Code · JetBrains</span><span class="mono-sm">/v1/kjv/3john/1</span></div>
+        <div class="row"><span class="lbl">Eyebrow</span><span class="mono-sm" style="font-size:11px;letter-spacing:.2em;text-transform:uppercase">Bible API</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="arsitektur" class="band">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="index">02 — Arsitektur</div>
+      <h2>Tiga lapisan, dependensi mengalir ke dalam.</h2>
+      <p>REST menyentuh mesin; mesin membungkus sebuah <code class="mono" style="font-size:14px">Source</code>; adapter mengimplementasikan kontrak itu. Hover tiap lapis untuk menonjolkannya.</p>
+    </div>
+
+    <div class="arch reveal">
+      <div class="arch-band" data-layer="transport">
+        <div class="arch-meta">
+          <div class="tag">Lapisan · Transport</div>
+          <div class="layer">server</div>
+          <div class="desc">REST di atas stdlib net/http. Routing pola Go 1.22, tanpa dependensi. Mapping error terpusat di sini.</div>
+        </div>
+        <div class="arch-nodes">
+          <div class="node">
+            <div class="nh"><span class="nm">Handler</span><span class="badge">net/http</span></div>
+            <p>7 rute: translations, books, chapter, verse, search, daily, random.</p>
+            <div class="pills"><span>mapErr → 404/501/400/500</span><span>ResolveBookID</span><span>sort deterministik</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arrow-flow reveal" style="padding:6px 0">
+        <div class="lbl">HTTP</div>
+        <div class="arrow-line"><div class="ln down"></div></div>
+      </div>
+
+      <div class="arch-band" data-layer="engine">
+        <div class="arch-meta">
+          <div class="tag">Lapisan · Inti</div>
+          <div class="layer">engine</div>
+          <div class="desc">Pure domain. Cache pasal in-memory, dan tiga operasi yang ditopang kapabilitas Corpus.</div>
+        </div>
+        <div class="arch-nodes">
+          <div class="node">
+            <div class="nh"><span class="nm">Engine</span><span class="badge">cache</span></div>
+            <p>Membungkus satu Source. Menyimpan pasal agar tidak di-fetch ulang.</p>
+            <div class="pills"><span>Chapter()</span><span>Search()</span><span>DailyVerse()</span><span>RandomVerse()</span></div>
+          </div>
+          <div class="node">
+            <div class="nh"><span class="nm">Chain</span><span class="badge">composite</span></div>
+            <p>Menggabungkan source secara berurutan: <code class="mono" style="font-size:12px">local</code> dulu, <code class="mono" style="font-size:12px">scrape</code> saat tidak ada.</p>
+            <div class="pills"><span>fallback ErrNotFound / ErrUnsupportedVersion</span><span>merge Translations</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arrow-flow reveal" style="padding:6px 0">
+        <div class="lbl">Source / Corpus</div>
+        <div class="arrow-line"><div class="ln up"></div></div>
+      </div>
+
+      <div class="arch-band" data-layer="adapter">
+        <div class="arch-meta">
+          <div class="tag">Lapisan · Adapter</div>
+          <div class="layer">sources</div>
+          <div class="desc">Dua implementasi Source. Hanya yang punya korpus in-memory yang menopang search/daily/random.</div>
+        </div>
+        <div class="arch-nodes">
+          <div class="node">
+            <div class="nh"><span class="nm">local</span><span class="badge def">default</span></div>
+            <p>JSON + <code class="mono" style="font-size:12px">go:embed</code>, di-scan di memori. Contoh KJV domain-publik tertanam.</p>
+            <div class="pills"><span class="badge corpus">Corpus ✓</span><span>scan O(n)</span><span>ALKITAB_DATA_DIR</span></div>
+          </div>
+          <div class="node">
+            <div class="nh"><span class="nm">scrape</span><span class="badge opt">opt-in</span></div>
+            <p>Mengikis alkitab.mobi via goquery. Timeout 10s, body dibatasi 4 MiB, error tidak bocor.</p>
+            <div class="pills"><span class="badge" style="color:var(--ink-3)">Corpus ✗ → 501</span><span>tb · bahasa daerah</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="demo-note">Kapabilitas <code class="mono" style="font-size:11.5px;color:var(--gold)">Corpus</code> diperiksa lewat type assertion — search/daily/random jujur mengembalikan 501 saat sumber aktif tidak punya korpus.</p>
+  </div>
+</section>
+
+<section id="lifecycle">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="index">03 — Siklus permintaan</div>
+      <h2>Bagaimana satu GET menjadi ayat.</h2>
+      <p>Dari path hingga JSON, setiap langkah melalui satu titik: Engine.</p>
+    </div>
+    <div class="lifecycle reveal">
+      <div class="step">
+        <div class="num">i</div>
+        <div>
+          <h4>Menerima <code>GET /v1/kjv/3john/1</code></h4>
+          <p>Router Go 1.22 menangkap path values. <code class="mono" style="font-size:13px">{chapter}</code> divalidasi numerik; bukan → 400.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">ii</div>
+        <div>
+          <h4>Resolve <code>book → id</code></h4>
+          <p><code class="mono" style="font-size:13px">ResolveBookID</code> menerima id, nama Inggris, atau nama Indonesia (case-insensitive) dan menormalisasinya ke <code class="mono" style="font-size:13px">"3john"</code>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">iii</div>
+        <div>
+          <h4>Engine mengecek cache</h4>
+          <p>Cache in-memory <code class="mono" style="font-size:13px">version:book:chapter</code> dijamin RWMutex. Dudukan → langsung kembali. Luput → lanjut ke source.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">iv</div>
+        <div>
+          <h4>Source menjawab (local, atau Chain → scrape)</h4>
+          <p><code class="mono" style="font-size:13px">local.Chapter</code> membaca JSON tertanam. Jika versi tak ada dan scrape aktif, Chain meneruskan ke adapter scrape.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">v</div>
+        <div>
+          <h4>JSON keluar</h4>
+          <p>Hasil di-cache, diserialisasi. Error bertipe memetakan ke kode status yang tepat — tak ada pesan internal yang bocor.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="endpoint" class="band">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="index">04 — Endpoint</div>
+      <h2>Tujuh rute, kontrak sederhana.</h2>
+      <p>JSON masuk, JSON keluar. <code class="mono" style="font-size:14px">{book}</code> menerima id, nama, atau singkatan — Inggris maupun Indonesia.</p>
+    </div>
+    <div class="ep-grid reveal">
+      <div class="ep wide">
+        <div class="m">GET</div>
+        <div class="path">/v1/translations</div>
+        <div class="ttl">Daftar terjemahan</div>
+        <p>Terjemahan yang tersedia di source aktif (contoh tertanam + direktori data).</p>
+      </div>
+      <div class="ep wide">
+        <div class="m">GET</div>
+        <div class="path">/v1/<span class="v">{version}</span>/books</div>
+        <div class="ttl">Struktur kitab</div>
+        <p>Daftar kitab, jumlah pasal, dan kategori PL/PB untuk satu terjemahan.</p>
+      </div>
+      <div class="ep">
+        <div class="m">GET</div>
+        <div class="path">/v1/<span class="v">{version}</span>/<span class="v">{book}</span>/<span class="v">{chapter}</span></div>
+        <div class="ttl">Satu pasal</div>
+        <p>Seluruh ayat, termasuk judul bagian.</p>
+      </div>
+      <div class="ep">
+        <div class="m">GET</div>
+        <div class="path">/v1/<span class="v">{version}</span>/<span class="v">{book}</span>/<span class="v">{chapter}</span>/<span class="v">{verse}</span></div>
+        <div class="ttl">Satu ayat</div>
+        <p>Disaring ke satu nomor ayat.</p>
+      </div>
+      <div class="ep">
+        <div class="m">GET</div>
+        <div class="path">/v1/search?q=<span class="v">{q}</span>&amp;version=<span class="v">{v}</span></div>
+        <div class="ttl">Pencarian teks</div>
+        <p>Substring case-insensitive di korpus lokal.</p>
+      </div>
+      <div class="ep">
+        <div class="m">GET</div>
+        <div class="path">/v1/daily?version=<span class="v">{v}</span></div>
+        <div class="ttl">Ayat hari ini</div>
+        <p>Deterministik per tanggal &amp; versi (UTC).</p>
+      </div>
+      <div class="ep">
+        <div class="m">GET</div>
+        <div class="path">/v1/random?version=<span class="v">{v}</span></div>
+        <div class="ttl">Ayat acak</div>
+        <p>Seed otomatis dari math/rand/v2.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="demo">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="index">05 — Demo</div>
+      <h2>Ambil ayat, langsung.</h2>
+      <p>Coba ambil 3 Yohanes 1 dari server lokal, atau lihat contoh jika server belum berjalan.</p>
+    </div>
+    <div class="demo-wrap reveal">
+      <div class="demo-bar">
+        <button class="btn primary" id="tryLive">Ambil dari localhost:3000 <span class="arrow">↗</span></button>
+        <span class="hint">butuh <code>go run ./cmd/alkitab-api</code> di port 3000</span>
+      </div>
+      <div class="term demo-out" id="demoOut">
+        <div class="term-bar"><i></i><i></i><i></i><span class="fn">response · kjv · 3john 1:4</span></div>
+<pre id="demoPre"><span class="c">// contoh respons (server belum dihubungi)</span>
+{
+  <span class="k">"version"</span>: <span class="s">"kjv"</span>,
+  <span class="k">"book"</span>: <span class="s">"3john"</span>,
+  <span class="k">"chapter"</span>: <span class="s">1</span>,
+  <span class="k">"verses"</span>: [
+    {
+      <span class="k">"verse"</span>: <span class="s">4</span>,
+      <span class="k">"type"</span>: <span class="s">"content"</span>,
+      <span class="k">"content"</span>: <span class="s">"I have no greater joy than to hear that my children walk in truth."</span>
+    }
+  ]
+}</pre>
+      </div>
+      <p class="demo-note" id="demoStatus"></p>
+    </div>
+  </div>
+</section>
+
+<section id="byod" class="band">
+  <div class="wrap">
+    <div class="sec-head reveal" style="margin-bottom:48px">
+      <div class="index">06 — Bring Your Own Data</div>
+    </div>
+    <div class="byod reveal">
+      <div>
+        <p class="pull">“Tidak ada teks <em>berhak cipta</em> di repositori ini — dan sengaja demikian.”</p>
+        <p style="color:var(--ink-2);margin-top:26px;font-size:17px;max-width:460px">Contoh tertanam adalah domain-publik (KJV). Terjemahan Berhak Cipta seperti TB © LAI hanya bisa diakses saat runtime lewat proxy scrape — tanggung jawab operator, bukan proyek.</p>
+      </div>
+      <div class="term">
+        <div class="term-bar"><i></i><i></i><i></i><span class="fn">alkitab-data/tb.json</span></div>
+<pre><span class="c">// format BYOD — satu file per terjemahan</span>
+{
+  <span class="k">"translation"</span>: {
+    <span class="k">"id"</span>: <span class="s">"tb"</span>,
+    <span class="k">"name"</span>: <span class="s">"Terjemahan Baru"</span>,
+    <span class="k">"language"</span>: <span class="s">"id"</span>
+  },
+  <span class="k">"books"</span>: [
+    { <span class="k">"id"</span>: <span class="s">"john"</span>,
+      <span class="k">"name"</span>: <span class="s">"Yohanes"</span>,
+      <span class="k">"chapters"</span>: <span class="s">21</span>,
+      <span class="k">"chapter_data"</span>: [
+        { <span class="k">"number"</span>: <span class="s">1</span>,
+          <span class="k">"verses"</span>: [
+            { <span class="k">"verse"</span>: <span class="s">1</span>,
+              <span class="k">"type"</span>: <span class="s">"content"</span>,
+              <span class="k">"content"</span>: <span class="s">"…"</span> }
+          ] }
+      ] }
+  ]
+}</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="ft-grid">
+      <div>
+        <div class="wm">alkitab<span>-api</span></div>
+        <p class="sub">API Alkitab berbasis Go. Satu mesin, banyak sumber, tanpa teks berhak cipta.</p>
+      </div>
+      <div>
+        <h5>Proyek</h5>
+        <ul>
+          <li><a href="https://github.com/davidgrldo/alkitab-api" target="_blank" rel="noopener">GitHub ↗</a></li>
+          <li><a href="https://github.com/davidgrldo/alkitab-api#endpoints" target="_blank" rel="noopener">Endpoint</a></li>
+          <li><a href="https://github.com/davidgrldo/alkitab-api#bring-your-own-data-byod" target="_blank" rel="noopener">Format BYOD</a></li>
+        </ul>
+      </div>
+      <div>
+        <h5>Bagian dari</h5>
+        <ul>
+          <li><a href="https://github.com/sonnylazuardi/alkitab-api" target="_blank" rel="noopener">Inspirasi ↗</a></li>
+          <li><a href="https://alkitab.mobi" target="_blank" rel="noopener">alkitab.mobi ↗</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="legal">
+      <b>Legal.</b> Repositori ini tidak mendistribusikan teks Alkitab berhak cipta. Contoh tertanam adalah King James Version (KJV), domain-publik. Terjemahan Berhak Cipta (mis. TB © LAI 1974) tidak disertakan; akses hanya melalui adapter scrape opt-in yang menjadi tanggung jawab operator. Alternatif domain-publik: BBE; karya abad ke-19 seperti Klinkert (1863/1879) dan Melayu Baba (1913).<br><br>
+      Microsite ini domain-publik visual; tipografi: Fraunces &amp; JetBrains Mono. Dibangun tanpa kerangka kerja.
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  // reveal on scroll
+  var io = new IntersectionObserver(function(es){
+    es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+  },{threshold:.12, rootMargin:"0px 0px -8% 0px"});
+  document.querySelectorAll('.reveal').forEach(function(el,i){
+    el.style.transitionDelay = el.style.transitionDelay || ((i%4)*60)+'ms';
+    io.observe(el);
+  });
+
+  // nav collapse after hero
+  var nav = document.getElementById('nav');
+  var hero = document.querySelector('.hero');
+  function onScroll(){
+    var past = window.scrollY > (hero.offsetHeight - 120);
+    if(past){ nav.classList.remove('collapsed'); } 
+  }
+  // gentle: always shown, but shrink effect could go here. keep visible.
+
+  // architecture band highlight
+  var bands = document.querySelectorAll('.arch-band');
+  bands.forEach(function(b){
+    b.addEventListener('mouseenter', function(){ bands.forEach(function(x){x.classList.remove('active')}); b.classList.add('active'); });
+    b.addEventListener('mouseleave', function(){ b.classList.remove('active'); });
+  });
+
+  // live demo
+  var btn = document.getElementById('tryLive');
+  var pre = document.getElementById('demoPre');
+  var status = document.getElementById('demoStatus');
+  var sample = pre.innerHTML;
+  btn.addEventListener('click', function(){
+    status.textContent = "menghubungi localhost:3000…";
+    btn.disabled = true;
+    fetch('http://localhost:3000/v1/kjv/3john/1', {mode:'cors'})
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
+      .then(function(txt){
+        var obj; try{ obj = JSON.parse(txt); }catch(e){ throw new Error('bukan JSON'); }
+        pre.textContent = JSON.stringify(obj, null, 2);
+        status.textContent = "✓ respons hidup dari localhost:3000";
+      })
+      .catch(function(err){
+        pre.innerHTML = sample;
+        status.textContent = "✗ tidak terhubung (" + err.message + ") — menampilkan contoh. Jalankan: go run ./cmd/alkitab-api";
+      })
+      .finally(function(){ btn.disabled = false; });
+  });
+})();
+</script>
+</body>
+</html>
