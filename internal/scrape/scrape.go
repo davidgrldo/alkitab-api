@@ -2,14 +2,20 @@ package scrape
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/davidgrldo/alkitab-api/internal/bible"
 )
+
+// maxBodyBytes caps how much of an upstream response is buffered before
+// parsing, so a hostile or broken upstream cannot OOM the process.
+const maxBodyBytes = 4 << 20
 
 // staticVersions: the scrape adapter cannot enumerate alkitab.mobi's catalog
 // without scraping, so it advertises a small known set.
@@ -28,7 +34,7 @@ func New(baseURL string) *Scrape {
 	if baseURL == "" {
 		baseURL = "https://alkitab.mobi"
 	}
-	return &Scrape{base: strings.TrimRight(baseURL, "/"), client: http.DefaultClient}
+	return &Scrape{base: strings.TrimRight(baseURL, "/"), client: &http.Client{Timeout: 10 * time.Second}}
 }
 
 func (s *Scrape) Translations() []bible.Translation { return staticVersions }
@@ -51,16 +57,16 @@ func (s *Scrape) Chapter(version, book string, chapter int) (*bible.Chapter, err
 	url := strings.Join([]string{s.base, version, bookName, strconv.Itoa(chapter)}, "/")
 	res, err := s.client.Get(url)
 	if err != nil {
-		return nil, err
+		return nil, errors.New("scrape: upstream request failed")
 	}
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusNotFound {
 		return nil, bible.ErrNotFound
 	}
 	if res.StatusCode != http.StatusOK {
-		return nil, errors.New("scrape: upstream status " + res.Status)
+		return nil, fmt.Errorf("scrape: upstream returned HTTP %d", res.StatusCode)
 	}
-	verses, err := parse(res.Body)
+	verses, err := parse(io.LimitReader(res.Body, maxBodyBytes))
 	if err != nil {
 		return nil, err
 	}
