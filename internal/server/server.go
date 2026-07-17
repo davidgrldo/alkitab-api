@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/davidgrldo/alkitab-api/internal/bible"
@@ -26,9 +27,21 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/search", s.search)
 	mux.HandleFunc("GET /v1/daily", s.daily)
 	mux.HandleFunc("GET /v1/random", s.random)
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("ok"))
+	})
 	// ponytail: public read-only API — blanket ACAO:* so browser pages (e.g. the microsite demo) can fetch it.
+	// Verses are immutable, so most responses are safely cacheable; random must never be, daily only briefly.
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+		switch {
+		case r.URL.Path == "/healthz", strings.HasPrefix(r.URL.Path, "/v1/random"):
+			w.Header().Set("Cache-Control", "no-store")
+		case strings.HasPrefix(r.URL.Path, "/v1/daily"):
+			w.Header().Set("Cache-Control", "public, max-age=300")
+		default:
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		}
 		mux.ServeHTTP(w, r)
 	})
 }
@@ -141,13 +154,27 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "missing query parameter 'q'")
 		return
 	}
+	// ponytail: limit di handler, bukan engine — engine tetap mengembalikan semua; total memberi tahu klien ada truncation.
+	limit := 50
+	if ls := r.URL.Query().Get("limit"); ls != "" {
+		n, err := strconv.Atoi(ls)
+		if err != nil || n < 1 {
+			writeError(w, http.StatusBadRequest, "invalid limit")
+			return
+		}
+		limit = n
+	}
 	version := r.URL.Query().Get("version")
 	hits, err := s.eng.Search(version, q)
 	if err != nil {
 		s.mapErr(w, err)
 		return
 	}
-	writeJSON(w, map[string]any{"hits": hits})
+	total := len(hits)
+	if total > limit {
+		hits = hits[:limit]
+	}
+	writeJSON(w, map[string]any{"hits": hits, "total": total})
 }
 
 func (s *Server) daily(w http.ResponseWriter, r *http.Request) {
