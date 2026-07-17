@@ -1,5 +1,8 @@
 # alkitab-api
 
+[![CI](https://github.com/davidgrldo/alkitab-api/actions/workflows/ci.yml/badge.svg)](https://github.com/davidgrldo/alkitab-api/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 > **One engine, many sources.** A Bible API in Go that treats copyright as an
 > architecture problem — not an afterthought.
 
@@ -54,6 +57,15 @@ curl localhost:3000/v1/kjv/3john/1/4
 Works out of the box: a small **public-domain KJV sample** (3 John, Philemon)
 is embedded. Full translations are yours to add — see [BYOD](#bring-your-own-data-byod).
 
+Prefer a container?
+
+```bash
+docker build -t alkitab-api . && docker run -p 3000:3000 alkitab-api
+```
+
+`GET /healthz` answers `ok` for liveness probes; the server shuts down
+gracefully on SIGINT/SIGTERM.
+
 ## Endpoints
 
 | Method | Path | Description |
@@ -62,7 +74,7 @@ is embedded. Full translations are yours to add — see [BYOD](#bring-your-own-d
 | GET | `/v1/{version}/books` | Books, chapter counts, OT/NT category |
 | GET | `/v1/{version}/{book}/{chapter}` | Whole chapter, section headings included |
 | GET | `/v1/{version}/{book}/{chapter}/{verse}` | Single verse |
-| GET | `/v1/search?q=&version=` | Case-insensitive substring search (local corpus) |
+| GET | `/v1/search?q=&version=&limit=` | Case-insensitive substring search (local corpus); default limit 50, `total` reports the full count |
 | GET | `/v1/daily?version=` | Deterministic per date & version (UTC) |
 | GET | `/v1/random?version=` | Random verse, seeded by `math/rand/v2` |
 
@@ -116,5 +128,6 @@ supplying your own data file, for which you are responsible.
 ## Microsite
 
 A single-file, framework-free microsite that tells the whole story visually
-lives at [`site/index.html`](site/index.html) — open it in a browser, run the
-server, and the live demo button fetches a verse for real.
+is live at **[davidgrldo.github.io/alkitab-api](https://davidgrldo.github.io/alkitab-api/)**
+(source: [`site/index.html`](site/index.html)). Run the server locally and its
+demo button fetches a verse for real.
