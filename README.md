@@ -3,8 +3,6 @@
 A Go Bible API server with a data-source-agnostic engine. Ships a JSON-backed
 `local` adapter (default) and an opt-in `scrape` adapter for `alkitab.mobi`.
 
-Inspired by [sonnylazuardi/alkitab-api](https://github.com/sonnylazuardi/alkitab-api).
-
 ## Run
 
 ```bash
