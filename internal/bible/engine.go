@@ -154,9 +154,10 @@ func (c *Chain) Chapter(version, book string, chapter int) (*Chapter, error) {
 		if err == nil {
 			return ch, nil
 		}
-		if !errors.Is(err, ErrNotFound) {
-			return nil, err
+		if errors.Is(err, ErrNotFound) || errors.Is(err, ErrUnsupportedVersion) {
+			continue
 		}
+		return nil, err
 	}
 	return nil, ErrNotFound
 }

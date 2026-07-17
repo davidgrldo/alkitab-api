@@ -1,6 +1,7 @@
 package bible
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -168,5 +169,69 @@ func TestChainTranslationsMerged(t *testing.T) {
 	got := ch.Translations()
 	if len(got) != 2 {
 		t.Errorf("want 2 translations merged, got %d", len(got))
+	}
+}
+
+// unsupportedFakeSource models a source that owns one version and rejects
+// every other version with ErrUnsupportedVersion (mirrors local.Local's
+// behavior for versions it does not carry). Supported versions look up
+// chapters by key, returning ErrNotFound on a genuine miss.
+type unsupportedFakeSource struct {
+	trans       []Translation
+	supportedID string
+	chaps       map[string]*Chapter
+}
+
+func (f *unsupportedFakeSource) Translations() []Translation { return f.trans }
+
+func (f *unsupportedFakeSource) Books(version string) ([]Book, error) {
+	if version != f.supportedID {
+		return nil, ErrUnsupportedVersion
+	}
+	return nil, nil
+}
+
+func (f *unsupportedFakeSource) Chapter(version, book string, chapter int) (*Chapter, error) {
+	if version != f.supportedID {
+		return nil, ErrUnsupportedVersion
+	}
+	c, ok := f.chaps[fmt.Sprintf("%s:%s:%d", version, book, chapter)]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return c, nil
+}
+
+func TestChainFallsThroughOnUnsupportedVersion(t *testing.T) {
+	primary := &unsupportedFakeSource{
+		trans:       []Translation{{ID: "kjv", Name: "KJV", Language: "en"}},
+		supportedID: "kjv",
+		chaps: map[string]*Chapter{
+			"kjv:3john:1": {Translation: "kjv", Book: "3john", Number: 1,
+				Verses: []Verse{{Number: 1, Content: "The elder", Type: "content"}}},
+		},
+	}
+	secondary := &fakeSource{
+		trans: []Translation{{ID: "tb", Name: "TB", Language: "id"}},
+		chaps: map[string]*Chapter{
+			"tb:3john:1": {Translation: "tb", Book: "3john", Number: 1,
+				Verses: []Verse{{Number: 1, Content: "Kepala Jemaat", Type: "content"}}},
+		},
+	}
+	ch := NewChain(primary, secondary)
+
+	// Primary returns ErrUnsupportedVersion for "tb"; Chain must fall through
+	// to the secondary source instead of propagating the error.
+	c, err := ch.Chapter("tb", "3john", 1)
+	if err != nil {
+		t.Fatalf("Chapter tb/3john/1: %v (expected fallthrough to secondary)", err)
+	}
+	if c.Translation != "tb" || c.Verses[0].Content != "Kepala Jemaat" {
+		t.Errorf("expected secondary source chapter, got %+v", c)
+	}
+
+	// Sanity: a version both sources reject still yields ErrNotFound.
+	if _, err := ch.Chapter("zzz", "3john", 1); err != ErrNotFound {
+		t.Errorf("want ErrNotFound for fully-unsupported version, got %v", err)
 	}
 }
