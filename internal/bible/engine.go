@@ -12,8 +12,10 @@ import (
 
 // Engine wraps a Source with a chapter cache and corpus-backed operations.
 type Engine struct {
-	src   Source
-	mu    sync.RWMutex
+	src Source
+	mu  sync.RWMutex
+	// cache holds *Chapter values that are treated as immutable after store;
+	// callers must not mutate them.
 	cache map[string]*Chapter
 }
 
@@ -115,7 +117,8 @@ func hashSeed(s string) uint32 {
 }
 
 // Chain is a Source that delegates to members in order, returning the first
-// non-ErrNotFound result. Books/Translations are merged across members.
+// non-ErrNotFound result. Books returns the first non-error result; Translations
+// are merged across members.
 type Chain struct {
 	sources []Source
 }

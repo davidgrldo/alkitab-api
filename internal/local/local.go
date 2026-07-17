@@ -27,7 +27,9 @@ type fileData struct {
 type translationData struct {
 	Translation bible.Translation
 	Books       []bible.Book
-	Chapters    map[string]*bible.Chapter // key: book:chapter
+	// Chapters holds *Chapter values that are treated as immutable after store;
+	// callers must not mutate them. Key: book:chapter.
+	Chapters map[string]*bible.Chapter
 }
 
 // Local is a bible.Source backed by JSON files (embedded + optional data dir).

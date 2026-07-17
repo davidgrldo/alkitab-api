@@ -4,7 +4,7 @@ import "strings"
 
 type canonical struct {
 	ID, EnName, EnAbbr, IdName, IdAbbr, Testament string
-	Chapters                                     int
+	Chapters                                      int
 }
 
 // canon: 66 books, English + Indonesian names and abbreviations, chapter counts.
