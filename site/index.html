@@ -177,7 +177,7 @@
   /* philosophy pillars */
   .pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-top:1px solid var(--rule)}
   .pillar{padding:42px 34px 42px 0;border-bottom:1px solid var(--rule);position:relative}
-  .pillar:not(:last-child){padding-right:34px}
+  .pillar:not(:first-child){padding-left:34px}
   .pillar:not(:last-child)::after{content:"";position:absolute;top:42px;bottom:42px;right:0;width:1px;background:var(--rule)}
   .pillar .n{font-family:var(--mono);font-size:12px;color:var(--accent);letter-spacing:.1em}
   .pillar h3{font-family:var(--serif);font-weight:500;font-size:23px;letter-spacing:-.02em;margin:18px 0 12px;line-height:1.2}
@@ -234,7 +234,9 @@
   .arrow-flow .lbl{font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:.1em;text-transform:uppercase}
   .arrow-line{display:flex;align-items:center;gap:14px;color:var(--ink-3);font-family:var(--mono);font-size:11px;letter-spacing:.1em}
   .arrow-line .ln{flex:1;height:1px;background:var(--rule-2);position:relative}
-  .arrow-line .ln::before,.arrow-line .ln::after{content:"";position:absolute;top:-3px;width:7px;height:7px;border:1px solid var(--rule-2);transform:rotate(45deg)}
+  /* hanya pseudo yang dipakai yang dibuat — rule generik ::before+::after
+     meninggalkan wajik full-border liar di ujung garis */
+  .arrow-line .ln.down::before,.arrow-line .ln.up::after{content:"";position:absolute;top:-3px;width:7px;height:7px;border:1px solid var(--rule-2);transform:rotate(45deg)}
   .arrow-line .ln.down::before{left:-1px;border-right:0;border-top:0}
   .arrow-line .ln.up::after{right:-1px;border-left:0;border-bottom:0}
 
@@ -273,6 +275,10 @@
 
   /* byod */
   .byod{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+  .envs{margin-top:30px;max-width:460px;border-top:1px solid var(--rule)}
+  .env{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--rule);flex-wrap:wrap}
+  .env code{font-family:var(--mono);font-size:12.5px;color:var(--ink)}
+  .env span{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);text-align:right}
   .pull{font-family:var(--serif);font-style:italic;font-weight:400;font-size:clamp(26px,3vw,38px);line-height:1.25;letter-spacing:-.02em;color:var(--ink);font-variation-settings:"opsz" 100}
   .pull em{font-style:italic;color:var(--accent)}
 
@@ -342,8 +348,8 @@
 <span class="p">$</span> go run ./cmd/alkitab-api
   → listening on :3000 (scrape=<span class="k">false</span>)
 
-<span class="c"># ambil satu pasal</span>
-<span class="p">$</span> curl localhost:3000/v1/kjv/3john/1
+<span class="c"># ambil satu ayat</span>
+<span class="p">$</span> curl localhost:3000/v1/kjv/3john/1/4
 {
   <span class="k">"version"</span>: <span class="s">"kjv"</span>,
   <span class="k">"verses"</span>: [
@@ -587,7 +593,7 @@
     <div class="sec-head">
       <div class="index">Demo</div>
       <h2>Ambil ayat, langsung.</h2>
-      <p>Coba ambil 3 Yohanes 1 dari server lokal, atau lihat contoh jika server belum berjalan.</p>
+      <p>Coba ambil 3 Yohanes 1:4 dari server lokal, atau lihat contoh jika server belum berjalan.</p>
     </div>
     <div class="demo-wrap">
       <div class="demo-bar">
@@ -604,8 +610,9 @@
   <span class="k">"verses"</span>: [
     {
       <span class="k">"verse"</span>: <span class="s">4</span>,
+      <span class="k">"content"</span>: <span class="s">"I have no greater joy than to hear that my children walk in truth."</span>,
       <span class="k">"type"</span>: <span class="s">"content"</span>,
-      <span class="k">"content"</span>: <span class="s">"I have no greater joy than to hear that my children walk in truth."</span>
+      <span class="k">"order"</span>: <span class="s">0</span>
     }
   ]
 }</pre>
@@ -623,7 +630,13 @@
     <div class="byod">
       <div>
         <p class="pull">“Tidak ada teks <em>berhak cipta</em> di repositori ini — dan sengaja demikian.”</p>
-        <p class="byod-sub">Contoh tertanam adalah domain-publik (KJV). Terjemahan berhak cipta seperti TB © LAI hanya bisa diakses saat runtime lewat proxy scrape — tanggung jawab operator, bukan proyek.</p>
+        <p class="byod-sub">Contoh tertanam adalah domain-publik — KJV, hanya 3 Yohanes &amp; Filemon. File runtime dengan <code class="mono mono-sm">id</code> yang sama menimpa contoh tertanam. Terjemahan berhak cipta seperti TB © LAI hanya bisa diakses saat runtime lewat proxy scrape — tanggung jawab operator, bukan proyek.</p>
+        <div class="envs">
+          <div class="env"><code>ALKITAB_PORT</code><span>port listen · default 3000</span></div>
+          <div class="env"><code>ALKITAB_DATA_DIR</code><span>direktori terjemahan tambahan</span></div>
+          <div class="env"><code>ALKITAB_SCRAPE</code><span>1 → aktifkan adapter scrape</span></div>
+          <div class="env"><code>ALKITAB_BASE_URL</code><span>basis scrape · default alkitab.mobi</span></div>
+        </div>
       </div>
       <div class="term">
         <div class="term-bar"><span class="fn">alkitab-data/tb.json</span></div>
@@ -637,6 +650,8 @@
   <span class="k">"books"</span>: [
     { <span class="k">"id"</span>: <span class="s">"john"</span>,
       <span class="k">"name"</span>: <span class="s">"Yohanes"</span>,
+      <span class="k">"abbr"</span>: <span class="s">"Yoh"</span>,
+      <span class="k">"testament"</span>: <span class="s">"NT"</span>,
       <span class="k">"chapters"</span>: <span class="s">21</span>,
       <span class="k">"chapter_data"</span>: [
         { <span class="k">"number"</span>: <span class="s">1</span>,
@@ -671,7 +686,7 @@
         </ul>
       </div>
       <div>
-        <h5>Sumber</h5>
+        <div class="ft-h">Sumber</div>
         <ul>
           <li><a href="https://alkitab.mobi" target="_blank" rel="noopener">alkitab.mobi ↗</a></li>
         </ul>
@@ -713,7 +728,7 @@
   btn.addEventListener('click', function(){
     status.textContent = "menghubungi localhost:3000…";
     btn.disabled = true;
-    fetch('http://localhost:3000/v1/kjv/3john/1', {mode:'cors'})
+    fetch('http://localhost:3000/v1/kjv/3john/1/4', {mode:'cors'})
       .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
       .then(function(txt){
         var obj; try{ obj = JSON.parse(txt); }catch(e){ throw new Error('bukan JSON'); }
