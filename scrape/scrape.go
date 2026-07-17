@@ -23,9 +23,18 @@ import (
 const maxBodyBytes = 4 << 20
 
 // staticVersions: the scrape adapter cannot enumerate alkitab.mobi's catalog
-// without scraping, so it advertises a small known set.
+// without scraping, so it advertises a curated set verified against the
+// upstream version index (names as published there).
 var staticVersions = []bible.Translation{
-	{ID: "tb", Name: "Terjemahan Baru", Language: "id"},
+	{ID: "tb", Name: "Terjemahan Baru (1974)", Language: "id"},
+	{ID: "tl", Name: "Terjemahan Lama (1954)", Language: "id"},
+	{ID: "bis", Name: "Alkitab Kabar Baik — Bahasa Indonesia Sehari-hari (1985)", Language: "id"},
+	{ID: "vmd", Name: "Versi Mudah Dibaca (2005)", Language: "id"},
+	{ID: "tsi", Name: "Terjemahan Sederhana Indonesia", Language: "id"},
+	{ID: "ayt", Name: "Alkitab Yang Terbuka", Language: "id"},
+	{ID: "ende", Name: "Alkitab Ende (1970)", Language: "id"},
+	{ID: "jawa", Name: "Alkitab Bahasa Jawa", Language: "jv"},
+	{ID: "sunda", Name: "Alkitab Bahasa Sunda (1991)", Language: "su"},
 }
 
 // userAgent identifies this proxy to the upstream site.
