@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/davidgrldo/alkitab-api/internal/bible"
+	"github.com/davidgrldo/alkitab-api/bible"
 )
 
 func TestLocalLoadsEmbedded(t *testing.T) {

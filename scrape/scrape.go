@@ -1,3 +1,7 @@
+// Package scrape is an opt-in bible.Source that proxies alkitab.mobi at
+// runtime — nothing is redistributed. It throttles and identifies itself
+// upstream, and does not implement bible.Corpus, so search/daily/random
+// honestly report unsupported.
 package scrape
 
 import (
@@ -11,7 +15,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/davidgrldo/alkitab-api/internal/bible"
+	"github.com/davidgrldo/alkitab-api/bible"
 )
 
 // maxBodyBytes caps how much of an upstream response is buffered before

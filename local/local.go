@@ -1,3 +1,7 @@
+// Package local is a bible.Source backed by JSON files: a small embedded
+// public-domain sample (KJV: 3 John, Philemon) plus any translations dropped
+// into a data directory (BYOD). It implements bible.Corpus, so it powers
+// search, daily, and random.
 package local
 
 import (
@@ -7,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/davidgrldo/alkitab-api/internal/bible"
+	"github.com/davidgrldo/alkitab-api/bible"
 )
 
 //go:embed data/*.json

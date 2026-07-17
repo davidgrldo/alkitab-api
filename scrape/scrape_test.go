@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/davidgrldo/alkitab-api/internal/bible"
+	"github.com/davidgrldo/alkitab-api/bible"
 )
 
 func TestScrapeChapter(t *testing.T) {

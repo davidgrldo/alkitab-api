@@ -66,6 +66,40 @@ docker build -t alkitab-api . && docker run -p 3000:3000 alkitab-api
 `GET /healthz` answers `ok` for liveness probes; the server shuts down
 gracefully on SIGINT/SIGTERM.
 
+## Use as a library
+
+The engine and adapters are importable — the HTTP server is just one consumer:
+
+```bash
+go get github.com/davidgrldo/alkitab-api
+```
+
+```go
+package main
+
+import (
+	"fmt"
+
+	"github.com/davidgrldo/alkitab-api/bible"
+	"github.com/davidgrldo/alkitab-api/local"
+)
+
+func main() {
+	src, err := local.New("") // "" = embedded public-domain sample; or your ALKITAB_DATA_DIR
+	if err != nil {
+		panic(err)
+	}
+	eng := bible.New(src)
+
+	ch, _ := eng.Chapter("kjv", "3john", 1)
+	fmt.Println(ch.Verses[3].Content) // I have no greater joy…
+}
+```
+
+Compose sources with `bible.NewChain(local, scrape)` — the engine checks the
+`bible.Corpus` capability by type assertion, so search/daily/random work
+exactly when the active source can support them.
+
 ## Endpoints
 
 | Method | Path | Description |

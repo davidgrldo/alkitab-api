@@ -3,8 +3,8 @@ package bible_test
 import (
 	"testing"
 
-	"github.com/davidgrldo/alkitab-api/internal/bible"
-	"github.com/davidgrldo/alkitab-api/internal/local"
+	"github.com/davidgrldo/alkitab-api/bible"
+	"github.com/davidgrldo/alkitab-api/local"
 )
 
 // fakeScrape is a minimal bible.Source standing in for the scrape adapter.

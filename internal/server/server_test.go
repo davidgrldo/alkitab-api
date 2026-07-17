@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/davidgrldo/alkitab-api/internal/bible"
-	"github.com/davidgrldo/alkitab-api/internal/local"
+	"github.com/davidgrldo/alkitab-api/bible"
+	"github.com/davidgrldo/alkitab-api/local"
 )
 
 func newServer(t *testing.T) *Server {

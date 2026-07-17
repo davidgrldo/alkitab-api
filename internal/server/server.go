@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davidgrldo/alkitab-api/internal/bible"
+	"github.com/davidgrldo/alkitab-api/bible"
 )
 
 type Server struct {

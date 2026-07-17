@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/davidgrldo/alkitab-api/internal/bible"
-	"github.com/davidgrldo/alkitab-api/internal/local"
-	"github.com/davidgrldo/alkitab-api/internal/scrape"
+	"github.com/davidgrldo/alkitab-api/bible"
+	"github.com/davidgrldo/alkitab-api/local"
+	"github.com/davidgrldo/alkitab-api/scrape"
 	"github.com/davidgrldo/alkitab-api/internal/server"
 )
 

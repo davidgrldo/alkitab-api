@@ -1,3 +1,7 @@
+// Package bible is the core of alkitab-api: domain types, the Source and
+// Corpus contracts, a caching Engine, and a fallback Chain for composing
+// sources. Pair it with an adapter such as local (embedded/BYOD JSON) or
+// scrape (runtime proxy) — dependencies always point inward.
 package bible
 
 import "errors"
