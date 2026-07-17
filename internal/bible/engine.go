@@ -117,8 +117,8 @@ func hashSeed(s string) uint32 {
 }
 
 // Chain is a Source that delegates to members in order, returning the first
-// non-ErrNotFound result. Books returns the first non-error result; Translations
-// are merged across members.
+// non-ErrNotFound / non-ErrUnsupportedVersion result. Books returns the first
+// non-error result; Translations are merged across members.
 type Chain struct {
 	sources []Source
 }
