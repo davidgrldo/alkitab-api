@@ -56,6 +56,12 @@
 
   .wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
   .mono{font-family:var(--mono)}
+  .mono-xs{font-size:11.5px}
+  .mono-sm{font-size:13px}
+  .mono-md{font-size:14px}
+  .axpad{padding:6px 0}
+  .mb2{margin-bottom:48px}
+  .byod-sub{color:var(--ink-2);margin-top:26px;font-size:17px;max-width:460px}
 
   /* eyebrow tag */
   .eyebrow{
@@ -95,7 +101,6 @@
     transition:transform .2s var(--ease),background .25s;
   }
   nav .gh:hover{transform:scale(.97);background:#000}
-  nav.collapsed{transform:translateX(-50%) translateY(-130%)}
   @media(max-width:760px){
     nav .links{display:none}
     nav{padding:8px 8px 8px 18px}
@@ -298,6 +303,8 @@
   <a class="gh" href="https://github.com/davidgrldo/alkitab-api" target="_blank" rel="noopener">GitHub ↗</a>
 </nav>
 
+<main>
+
 <header class="hero" id="top">
   <div class="wrap">
     <div class="hero-grid">
@@ -343,12 +350,12 @@
       <div class="pillar">
         <div class="n">i.</div>
         <h3>Bring Your Own Data</h3>
-        <p>Mesin tidak membawa teks berhak cipta. Cukup letakkan berkas JSON di <code class="mono" style="font-size:13px">ALKITAB_DATA_DIR</code> dan ia langsung terbaca di samping contoh domain-publik yang sudah tertanam.</p>
+        <p>Mesin tidak membawa teks berhak cipta. Cukup letakkan berkas JSON di <code class="mono mono-sm">ALKITAB_DATA_DIR</code> dan ia langsung terbaca di samping contoh domain-publik yang sudah tertanam.</p>
       </div>
       <div class="pillar">
         <div class="n">ii.</div>
         <h3>Scrape adalah opt-in</h3>
-        <p>Akses ke Terjemahan Baru tetap mungkin lewat adapter <code class="mono" style="font-size:13px">scrape</code> yang diaktifkan dengan <code class="mono" style="font-size:13px">ALKITAB_SCRAPE=1</code> — sekadar proxy saat runtime, tanpa redistribusi.</p>
+        <p>Akses ke Terjemahan Baru tetap mungkin lewat adapter <code class="mono mono-sm">scrape</code> yang diaktifkan dengan <code class="mono mono-sm">ALKITAB_SCRAPE=1</code> — sekadar proxy saat runtime, tanpa redistribusi.</p>
       </div>
       <div class="pillar">
         <div class="n">iii.</div>
@@ -384,7 +391,7 @@
     <div class="sec-head reveal">
       <div class="index">02 — Arsitektur</div>
       <h2>Tiga lapisan, dependensi mengalir ke dalam.</h2>
-      <p>REST menyentuh mesin; mesin membungkus sebuah <code class="mono" style="font-size:14px">Source</code>; adapter mengimplementasikan kontrak itu. Hover tiap lapis untuk menonjolkannya.</p>
+      <p>REST menyentuh mesin; mesin membungkus sebuah <code class="mono mono-md">Source</code>; adapter mengimplementasikan kontrak itu. Hover tiap lapis untuk menonjolkannya.</p>
     </div>
 
     <div class="arch reveal">
@@ -403,7 +410,7 @@
         </div>
       </div>
 
-      <div class="arrow-flow reveal" style="padding:6px 0">
+      <div class="arrow-flow reveal" class="axpad">
         <div class="lbl">HTTP</div>
         <div class="arrow-line"><div class="ln down"></div></div>
       </div>
@@ -422,13 +429,13 @@
           </div>
           <div class="node">
             <div class="nh"><span class="nm">Chain</span><span class="badge">composite</span></div>
-            <p>Menggabungkan source secara berurutan: <code class="mono" style="font-size:12px">local</code> dulu, <code class="mono" style="font-size:12px">scrape</code> saat tidak ada.</p>
+            <p>Menggabungkan source secara berurutan: <code class="mono mono-xs">local</code> dulu, <code class="mono mono-xs">scrape</code> saat tidak ada.</p>
             <div class="pills"><span>fallback ErrNotFound / ErrUnsupportedVersion</span><span>merge Translations</span></div>
           </div>
         </div>
       </div>
 
-      <div class="arrow-flow reveal" style="padding:6px 0">
+      <div class="arrow-flow reveal" class="axpad">
         <div class="lbl">Source / Corpus</div>
         <div class="arrow-line"><div class="ln up"></div></div>
       </div>
@@ -442,7 +449,7 @@
         <div class="arch-nodes">
           <div class="node">
             <div class="nh"><span class="nm">local</span><span class="badge def">default</span></div>
-            <p>JSON + <code class="mono" style="font-size:12px">go:embed</code>, di-scan di memori. Contoh KJV domain-publik tertanam.</p>
+            <p>JSON + <code class="mono mono-xs">go:embed</code>, di-scan di memori. Contoh KJV domain-publik tertanam.</p>
             <div class="pills"><span class="badge corpus">Corpus ✓</span><span>scan O(n)</span><span>ALKITAB_DATA_DIR</span></div>
           </div>
           <div class="node">
@@ -469,28 +476,28 @@
         <div class="num">i</div>
         <div>
           <h4>Menerima <code>GET /v1/kjv/3john/1</code></h4>
-          <p>Router Go 1.22 menangkap path values. <code class="mono" style="font-size:13px">{chapter}</code> divalidasi numerik; bukan → 400.</p>
+          <p>Router Go 1.22 menangkap path values. <code class="mono mono-sm">{chapter}</code> divalidasi numerik; bukan → 400.</p>
         </div>
       </div>
       <div class="step">
         <div class="num">ii</div>
         <div>
           <h4>Resolve <code>book → id</code></h4>
-          <p><code class="mono" style="font-size:13px">ResolveBookID</code> menerima id, nama Inggris, atau nama Indonesia (case-insensitive) dan menormalisasinya ke <code class="mono" style="font-size:13px">"3john"</code>.</p>
+          <p><code class="mono mono-sm">ResolveBookID</code> menerima id, nama Inggris, atau nama Indonesia (case-insensitive) dan menormalisasinya ke <code class="mono mono-sm">"3john"</code>.</p>
         </div>
       </div>
       <div class="step">
         <div class="num">iii</div>
         <div>
           <h4>Engine mengecek cache</h4>
-          <p>Cache in-memory <code class="mono" style="font-size:13px">version:book:chapter</code> dijamin RWMutex. Dudukan → langsung kembali. Luput → lanjut ke source.</p>
+          <p>Cache in-memory <code class="mono mono-sm">version:book:chapter</code> dijamin RWMutex. Dudukan → langsung kembali. Luput → lanjut ke source.</p>
         </div>
       </div>
       <div class="step">
         <div class="num">iv</div>
         <div>
           <h4>Source menjawab (local, atau Chain → scrape)</h4>
-          <p><code class="mono" style="font-size:13px">local.Chapter</code> membaca JSON tertanam. Jika versi tak ada dan scrape aktif, Chain meneruskan ke adapter scrape.</p>
+          <p><code class="mono mono-sm">local.Chapter</code> membaca JSON tertanam. Jika versi tak ada dan scrape aktif, Chain meneruskan ke adapter scrape.</p>
         </div>
       </div>
       <div class="step">
@@ -509,7 +516,7 @@
     <div class="sec-head reveal">
       <div class="index">04 — Endpoint</div>
       <h2>Tujuh rute, kontrak sederhana.</h2>
-      <p>JSON masuk, JSON keluar. <code class="mono" style="font-size:14px">{book}</code> menerima id, nama, atau singkatan — Inggris maupun Indonesia.</p>
+      <p>JSON masuk, JSON keluar. <code class="mono mono-md">{book}</code> menerima id, nama, atau singkatan — Inggris maupun Indonesia.</p>
     </div>
     <div class="ep-grid reveal">
       <div class="ep wide">
@@ -593,13 +600,13 @@
 
 <section id="byod" class="band">
   <div class="wrap">
-    <div class="sec-head reveal" style="margin-bottom:48px">
+    <div class="sec-head reveal mb2">
       <div class="index">06 — Bring Your Own Data</div>
     </div>
     <div class="byod reveal">
       <div>
         <p class="pull">“Tidak ada teks <em>berhak cipta</em> di repositori ini — dan sengaja demikian.”</p>
-        <p style="color:var(--ink-2);margin-top:26px;font-size:17px;max-width:460px">Contoh tertanam adalah domain-publik (KJV). Terjemahan Berhak Cipta seperti TB © LAI hanya bisa diakses saat runtime lewat proxy scrape — tanggung jawab operator, bukan proyek.</p>
+        <p class="byod-sub">Contoh tertanam adalah domain-publik (KJV). Terjemahan Berhak Cipta seperti TB © LAI hanya bisa diakses saat runtime lewat proxy scrape — tanggung jawab operator, bukan proyek.</p>
       </div>
       <div class="term">
         <div class="term-bar"><i></i><i></i><i></i><span class="fn">alkitab-data/tb.json</span></div>
@@ -628,6 +635,8 @@
     </div>
   </div>
 </section>
+
+</main>
 
 <footer>
   <div class="wrap">
@@ -669,15 +678,6 @@
     el.style.transitionDelay = el.style.transitionDelay || ((i%4)*60)+'ms';
     io.observe(el);
   });
-
-  // nav collapse after hero
-  var nav = document.getElementById('nav');
-  var hero = document.querySelector('.hero');
-  function onScroll(){
-    var past = window.scrollY > (hero.offsetHeight - 120);
-    if(past){ nav.classList.remove('collapsed'); } 
-  }
-  // gentle: always shown, but shrink effect could go here. keep visible.
 
   // architecture band highlight
   var bands = document.querySelectorAll('.arch-band');
