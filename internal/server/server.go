@@ -26,7 +26,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/search", s.search)
 	mux.HandleFunc("GET /v1/daily", s.daily)
 	mux.HandleFunc("GET /v1/random", s.random)
-	return mux
+	// ponytail: public read-only API — blanket ACAO:* so browser pages (e.g. the microsite demo) can fetch it.
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		mux.ServeHTTP(w, r)
+	})
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -114,9 +118,8 @@ func (s *Server) chapterVerse(w http.ResponseWriter, r *http.Request) {
 		s.mapErr(w, bible.ErrNotFound)
 		return
 	}
-	writeJSON(w, map[string]any{
-		"version": c.Translation, "book": c.Book, "chapter": c.Number, "verses": filtered,
-	})
+	// ponytail: pakai struct Chapter agar urutan field konsisten dengan endpoint pasal (map = key alfabetis).
+	writeJSON(w, bible.Chapter{Translation: c.Translation, Book: c.Book, Number: c.Number, Verses: filtered})
 }
 
 func (s *Server) resolveChapter(r *http.Request) (*bible.Chapter, error) {
