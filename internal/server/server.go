@@ -104,11 +104,15 @@ func (s *Server) chapterVerse(w http.ResponseWriter, r *http.Request) {
 		s.mapErr(w, badRequest("invalid verse"))
 		return
 	}
-	var filtered []bible.Verse
+	filtered := make([]bible.Verse, 0)
 	for _, v := range c.Verses {
 		if v.Number == vn {
 			filtered = append(filtered, v)
 		}
+	}
+	if len(filtered) == 0 {
+		s.mapErr(w, bible.ErrNotFound)
+		return
 	}
 	writeJSON(w, map[string]any{
 		"version": c.Translation, "book": c.Book, "chapter": c.Number, "verses": filtered,
@@ -145,7 +149,7 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) daily(w http.ResponseWriter, r *http.Request) {
 	version := r.URL.Query().Get("version")
-	h, err := s.eng.DailyVerse(version, time.Now())
+	h, err := s.eng.DailyVerse(version, time.Now().UTC())
 	if err != nil {
 		s.mapErr(w, err)
 		return

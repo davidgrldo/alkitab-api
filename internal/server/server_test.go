@@ -82,6 +82,12 @@ func TestSingleVerse(t *testing.T) {
 	}
 }
 
+func TestSingleVerseNotFound(t *testing.T) {
+	h := newServer(t).Handler()
+	// 3 John 1 has 14 verses; 999 does not exist -> 404 per spec §7.
+	getJSON(t, h, "/v1/kjv/3john/1/999", 404)
+}
+
 func TestSearch(t *testing.T) {
 	h := newServer(t).Handler()
 	m := getJSON(t, h, "/v1/search?q=truth&version=kjv", 200)
