@@ -1,5 +1,6 @@
 # opencode / superpowers scratch
 .superpowers/
+docs/
 
 # go binaries
 /alkitab-api
