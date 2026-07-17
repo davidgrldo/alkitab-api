@@ -25,7 +25,9 @@ HTTP ──▶ server ──▶ engine ──▶ Source
 - **`local`** — JSON via `go:embed` plus anything you drop in a data
   directory. Carries the in-memory corpus that powers search/daily/random.
 - **`scrape`** — a runtime proxy for `alkitab.mobi` (goquery, 10 s timeout,
-  4 MiB body cap). No corpus: search/daily/random honestly return `501`.
+  4 MiB body cap, throttled + self-identifying). Serves `tb`, `tl`, `bis`,
+  `vmd`, `tsi`, `ayt`, `ende`, `jawa`, `sunda`. No corpus: search/daily/random
+  honestly return `501`.
 - **`Chain`** — tries `local` first, falls through to `scrape` when a version
   isn't found. Capability is checked by type assertion, not by hoping.
 
@@ -60,7 +62,8 @@ is embedded. Full translations are yours to add — see [BYOD](#bring-your-own-d
 Prefer a container?
 
 ```bash
-docker build -t alkitab-api . && docker run -p 3000:3000 alkitab-api
+docker run -p 3000:3000 ghcr.io/davidgrldo/alkitab-api:latest
+# or build locally: docker build -t alkitab-api . && docker run -p 3000:3000 alkitab-api
 ```
 
 `GET /healthz` answers `ok` for liveness probes; the server shuts down
@@ -119,7 +122,27 @@ messages never leak.
 
 ## Bring Your Own Data (BYOD)
 
-Drop one JSON file per translation into `ALKITAB_DATA_DIR`:
+**Want a full Bible right away?** A complete public-domain KJV (66 books,
+31,100 verses) in BYOD format ships with every
+[release](https://github.com/davidgrldo/alkitab-api/releases) — download
+`kjv.json`, drop it in a directory, done:
+
+```bash
+mkdir -p data && curl -L -o data/kjv.json \
+  https://github.com/davidgrldo/alkitab-api/releases/latest/download/kjv.json
+ALKITAB_DATA_DIR=./data go run ./cmd/alkitab-api
+```
+
+Have another public-domain dump? `cmd/alkitab-convert` turns the common
+array-of-books JSON shape (e.g. [thiagobodruk/bible](https://github.com/thiagobodruk/bible))
+into BYOD:
+
+```bash
+go run ./cmd/alkitab-convert -id kjv -name "King James Version" -lang en en_kjv.json > kjv.json
+```
+
+Or write the format by hand — one JSON file per translation in
+`ALKITAB_DATA_DIR`:
 
 ```json
 {
