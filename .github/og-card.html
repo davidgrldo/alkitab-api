@@ -1,0 +1,109 @@
+<!--
+  Sumber untuk site/og.jpg (kartu Open Graph 1200x630).
+  Sengaja di .github/ agar tidak ikut ter-deploy ke Pages — ini aset build, bukan halaman.
+
+  Render ulang setelah mengubah tagline:
+
+    chrome --headless=new --disable-gpu --hide-scrollbars \
+      --force-device-scale-factor=2 --window-size=1200,630 \
+      --virtual-time-budget=10000 \
+      --screenshot=og-2x.png .github/og-card.html
+    sips -z 630 1200 og-2x.png --out og.png
+    sips -s format jpeg -s formatOptions 92 og.png --out site/og.jpg
+
+  Dirender 2x lalu diturunkan agar teks serif tetap halus; JPEG q92 dipilih
+  karena grain membuat PNG ~600 KB sementara JPEG ~87 KB tanpa artifact terlihat.
+  Token warna & tipografi harus tetap identik dengan site/index.html.
+-->
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  /* token identik dengan site/index.html */
+  :root{
+    --paper:#f5efe1;
+    --paper-2:#efe7d4;
+    --ink:#1c1813;
+    --ink-2:#6f6557;
+    --ink-3:#8a7d63;
+    --rule:#ddd2b8;
+    --rule-2:#c9bb9a;
+    --accent:#9a3b2d;
+    --serif:"Fraunces",Georgia,serif;
+    --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:1200px;height:630px;overflow:hidden}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--serif);
+    font-optical-sizing:auto;
+    -webkit-font-smoothing:antialiased;
+    position:relative;
+  }
+  /* ambient glow rubric — sama seperti hero situs */
+  body::after{
+    content:"";position:absolute;top:-30%;left:50%;transform:translateX(-50%);
+    width:130%;height:110%;pointer-events:none;
+    background:radial-gradient(ellipse at center,rgba(154,59,45,.075),rgba(154,59,45,0) 62%);
+  }
+  /* paper grain — data-URI turbulence identik dengan situs */
+  body::before{
+    content:"";position:absolute;inset:0;z-index:5;pointer-events:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.11 0 0 0 0 0.09 0 0 0 0 0.07 0 0 0 0.5 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    opacity:.05;mix-blend-mode:multiply;
+  }
+  .card{
+    position:relative;z-index:2;
+    width:100%;height:100%;
+    padding:74px 84px 66px;
+    display:flex;flex-direction:column;
+  }
+  /* eyebrow — persis pola situs: dot rubric + mono uppercase tracked */
+  .eyebrow{
+    font-family:var(--mono);font-size:16px;font-weight:500;
+    letter-spacing:.23em;text-transform:uppercase;color:var(--ink-2);
+    display:flex;align-items:center;gap:13px;
+  }
+  .eyebrow::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--accent);flex:none}
+
+  h1{
+    font-family:var(--serif);font-weight:500;
+    font-size:112px;line-height:1.0;letter-spacing:-.036em;
+    font-variation-settings:"opsz" 140;
+    margin-top:auto;
+  }
+  h1 em{font-style:italic;font-weight:400;color:var(--accent)}
+
+  .foot{
+    margin-top:44px;padding-top:26px;border-top:1px solid var(--rule);
+    display:flex;align-items:baseline;justify-content:space-between;gap:30px;
+  }
+  .wm{font-family:var(--serif);font-weight:600;font-size:30px;letter-spacing:-.02em}
+  .wm span{color:var(--accent)}
+  .facts{
+    font-family:var(--mono);font-size:19px;color:var(--ink-2);letter-spacing:.01em;
+    display:flex;align-items:center;gap:14px;white-space:nowrap;
+  }
+  .facts b{color:var(--ink);font-weight:500}
+  .facts i{font-style:normal;color:var(--rule-2)}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="eyebrow">Bible API · Go · Open Source</div>
+    <h1>Satu mesin,<br>banyak <em>sumber</em>.</h1>
+    <div class="foot">
+      <div class="wm">alkitab<span>-api</span></div>
+      <div class="facts">
+        <b>GET</b> /v1/kjv/3john/1/4 <i>·</i> satu binari <i>·</i> tanpa database
+      </div>
+    </div>
+  </div>
+</body>
+</html>
