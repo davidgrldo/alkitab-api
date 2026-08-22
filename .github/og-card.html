@@ -14,6 +14,11 @@
   Dirender 2x lalu diturunkan agar teks serif tetap halus; JPEG q92 dipilih
   karena grain membuat PNG ~600 KB sementara JPEG ~87 KB tanpa artifact terlihat.
   Token warna & tipografi harus tetap identik dengan site/index.html.
+
+  Komposisi sengaja terpusat, bukan rata-kiri seperti hero situs: sebagian
+  platform meng-crop og:image ke persegi dari tengah (630x630 dari 1200x630,
+  yaitu x 285-915), dan layout rata-kiri kehilangan wordmark serta separuh
+  headline di crop itu. Jaga tiap elemen di bawah ~600px lebar agar selamat.
 -->
 <!doctype html>
 <html lang="id">
@@ -61,8 +66,10 @@
   .card{
     position:relative;z-index:2;
     width:100%;height:100%;
-    padding:74px 84px 66px;
+    padding:70px 84px;
     display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    text-align:center;
   }
   /* eyebrow — persis pola situs: dot rubric + mono uppercase tracked */
   .eyebrow{
@@ -74,21 +81,20 @@
 
   h1{
     font-family:var(--serif);font-weight:500;
-    font-size:112px;line-height:1.0;letter-spacing:-.036em;
+    font-size:98px;line-height:1.03;letter-spacing:-.036em;
     font-variation-settings:"opsz" 140;
-    margin-top:auto;
+    margin-top:34px;
   }
   h1 em{font-style:italic;font-weight:400;color:var(--accent)}
 
-  .foot{
-    margin-top:44px;padding-top:26px;border-top:1px solid var(--rule);
-    display:flex;align-items:baseline;justify-content:space-between;gap:30px;
-  }
-  .wm{font-family:var(--serif);font-weight:600;font-size:30px;letter-spacing:-.02em}
+  /* hairline pendek & terpusat — full-width rule akan terpotong pada crop persegi */
+  .rule{width:172px;height:1px;background:var(--rule-2);margin-top:46px}
+
+  .wm{font-family:var(--serif);font-weight:600;font-size:34px;letter-spacing:-.02em;margin-top:28px}
   .wm span{color:var(--accent)}
   .facts{
-    font-family:var(--mono);font-size:19px;color:var(--ink-2);letter-spacing:.01em;
-    display:flex;align-items:center;gap:14px;white-space:nowrap;
+    font-family:var(--mono);font-size:18px;color:var(--ink-2);letter-spacing:.01em;
+    margin-top:14px;white-space:nowrap;
   }
   .facts b{color:var(--ink);font-weight:500}
   .facts i{font-style:normal;color:var(--rule-2)}
@@ -98,11 +104,10 @@
   <div class="card">
     <div class="eyebrow">Bible API · Go · Open Source</div>
     <h1>Satu mesin,<br>banyak <em>sumber</em>.</h1>
-    <div class="foot">
-      <div class="wm">alkitab<span>-api</span></div>
-      <div class="facts">
-        <b>GET</b> /v1/kjv/3john/1/4 <i>·</i> satu binari <i>·</i> tanpa database
-      </div>
+    <div class="rule"></div>
+    <div class="wm">alkitab<span>-api</span></div>
+    <div class="facts">
+      <b>GET</b> /v1/kjv/3john/1/4 <i>·</i> satu binari <i>·</i> tanpa database
     </div>
   </div>
 </body>
