@@ -4,9 +4,9 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>alkitab-api — Satu mesin, banyak sumber</title>
-<meta name="description" content="API Alkitab berbasis Go dengan arsitektur adapter. Local JSON sebagai default, scrape alkitab.mobi sebagai opsi. Tanpa pernah mendistribusikan teks berhak cipta." />
+<meta name="description" content="REST API Alkitab berbasis Go — satu binari, tanpa database, nol teks berhak cipta di repo. Pasal, ayat, pencarian, bacaan harian." />
 <meta property="og:title" content="alkitab-api — Satu mesin, banyak sumber · API Alkitab berbasis Go" />
-<meta property="og:description" content="API Alkitab berbasis Go dengan arsitektur adapter. Satu binari, tanpa database, tanpa pernah mendistribusikan teks berhak cipta." />
+<meta property="og:description" content="Hak cipta adalah masalah arsitektur: bawaan domain-publik, KJV lengkap dari rilis, sembilan terjemahan hanya lewat proxy opt-in. Jalankan sebagai server atau container — atau impor paketnya." />
 <meta property="og:type" content="website" />
 <meta name="twitter:card" content="summary" />
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📖</text></svg>" />
@@ -69,6 +69,8 @@
   .mono-md{font-size:14px}
   .mb2{margin-bottom:48px}
   .byod-sub{color:var(--ink-2);margin-top:26px;font-size:17px;max-width:460px}
+  .byod-sub a{color:var(--accent);border-bottom:1px solid rgba(154,59,45,.35);transition:border-color .25s}
+  .byod-sub a:hover{border-bottom-color:var(--accent)}
 
   /* eyebrow tag */
   .eyebrow{
@@ -334,7 +336,7 @@
       <div class="reveal">
         <span class="eyebrow">Bible API · Go · Open Source</span>
         <h1>Satu mesin,<br>banyak <em>sumber</em>.</h1>
-        <p class="lead">API Alkitab berbasis Go dengan arsitektur adapter — <code>local</code> JSON sebagai default, <code>scrape</code> alkitab.mobi sebagai opsi. Satu binari, tanpa database, tanpa pernah mendistribusikan teks berhak cipta.</p>
+        <p class="lead">API Alkitab berbasis Go dengan arsitektur adapter — <code>local</code> JSON sebagai default, <code>scrape</code> alkitab.mobi sebagai opsi. Satu binari, tanpa database, tanpa teks berhak cipta di repositori ini.</p>
         <div class="cta">
           <a class="btn primary" href="https://github.com/davidgrldo/alkitab-api" target="_blank" rel="noopener">
             Lihat di GitHub <span class="arrow">↗</span>
@@ -478,7 +480,7 @@
           <div class="node">
             <div class="nh"><span class="nm">scrape</span><span class="badge opt">opt-in</span></div>
             <p>Mengikis alkitab.mobi via goquery. Timeout 10s, body dibatasi 4 MiB, error tidak bocor.</p>
-            <div class="pills"><span class="badge" style="color:var(--ink-3)">Corpus ✗ → 501</span><span>tb · bahasa daerah</span></div>
+            <div class="pills"><span class="badge" style="color:var(--ink-3)">Corpus ✗ → 501</span><span>9 terjemahan · id/jv/su</span></div>
           </div>
         </div>
       </div>
@@ -630,7 +632,7 @@
     <div class="byod">
       <div>
         <p class="pull">“Tidak ada teks <em>berhak cipta</em> di repositori ini — dan sengaja demikian.”</p>
-        <p class="byod-sub">Contoh tertanam adalah domain-publik — KJV, hanya 3 Yohanes &amp; Filemon. File runtime dengan <code class="mono mono-sm">id</code> yang sama menimpa contoh tertanam. Terjemahan berhak cipta seperti TB © LAI hanya bisa diakses saat runtime lewat proxy scrape — tanggung jawab operator, bukan proyek.</p>
+        <p class="byod-sub">Contoh tertanam adalah domain-publik — KJV, hanya 3 Yohanes &amp; Filemon. Butuh Alkitab utuh? <a href="https://github.com/davidgrldo/alkitab-api/releases/latest/download/kjv.json" target="_blank" rel="noopener">KJV lengkap</a> tersedia sebagai aset rilis, dan <code class="mono mono-sm">alkitab-convert</code> mengubah dump domain-publik lain ke format ini. File runtime dengan <code class="mono mono-sm">id</code> yang sama menimpa contoh tertanam. Terjemahan berhak cipta seperti TB © LAI hanya bisa diakses saat runtime lewat proxy scrape — tanggung jawab operator, bukan proyek.</p>
         <div class="envs">
           <div class="env"><code>ALKITAB_PORT</code><span>port listen · default 3000</span></div>
           <div class="env"><code>ALKITAB_DATA_DIR</code><span>direktori terjemahan tambahan</span></div>
