@@ -55,6 +55,13 @@ func TestIndonesianBookName(t *testing.T) {
 	}
 }
 
+func TestLocalizedBooks(t *testing.T) {
+	id := LocalizedBooks("id")
+	if id[0].Name != "Kejadian" {
+		t.Errorf("want Kejadian, got %s", id[0].Name)
+	}
+}
+
 func errorIs(err, target error) bool {
 	return err == target
 }

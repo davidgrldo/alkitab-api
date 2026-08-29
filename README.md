@@ -66,7 +66,7 @@ docker run -p 3000:3000 ghcr.io/davidgrldo/alkitab-api:latest
 # or build locally: docker build -t alkitab-api . && docker run -p 3000:3000 alkitab-api
 ```
 
-`GET /healthz` answers `ok` for liveness probes; the server shuts down
+`GET /healthz` answers `ok` for liveness probes; `GET /readyz` answers `ok` when at least one translation is loaded. The server shuts down
 gracefully on SIGINT/SIGTERM.
 
 ## Use as a library
@@ -107,17 +107,19 @@ exactly when the active source can support them.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/v1/translations` | List available translations |
-| GET | `/v1/{version}/books` | Books, chapter counts, OT/NT category |
-| GET | `/v1/{version}/{book}/{chapter}` | Whole chapter, section headings included |
-| GET | `/v1/{version}/{book}/{chapter}/{verse}` | Single verse |
-| GET | `/v1/search?q=&version=&limit=` | Case-insensitive substring search (local corpus); default limit 50, `total` reports the full count |
-| GET | `/v1/daily?version=` | Deterministic per date & version (UTC) |
-| GET | `/v1/random?version=` | Random verse, seeded by `math/rand/v2` |
+| GET | `/v1` | Discovery document (route list) |
+| GET | `/v1/translations` | List translations with `origin` and `capabilities` |
+| GET | `/v1/{version}/books` | Books, chapter counts, OT/NT; `?locale=id` for Indonesian names |
+| GET | `/v1/{version}/{book}/{chapter}` | Whole chapter; `?also=tb,bis` adds parallel versions |
+| GET | `/v1/{version}/{book}/{chapter}/{verse}` | Single verse or inclusive range (`4` or `16-18`); same `?also=` |
+| GET | `/v1/passage?version=&q=` | Human reference (`3john 1:4-6`, `3 John 1:4`, `Yohanes 3:16`) |
+| GET | `/v1/search?q=&version=&limit=` | Substring search (local corpus). Optional `book`, `testament`, `offset`, `whole=1`. Default limit 50, max 200. `version` optional if exactly one corpus translation is loaded. Titles are skipped. |
+| GET | `/v1/daily?version=` | Deterministic per date & version. Optional `date=YYYY-MM-DD`, `tz=`, `book`, `testament`. Content verses only. |
+| GET | `/v1/random?version=` | Random verse (`book` / `testament` optional). Content verses only. |
 
 `{book}` accepts an id (`gen`), an English name (`Genesis`), or an Indonesian
 name (`Kejadian`) — case-insensitive. Typed errors map to honest status codes:
-`404` unknown, `400` malformed, `501` unsupported capability. Internal
+`404` unknown, `400` malformed, `501` unsupported capability, `502` scrape upstream failure. Internal
 messages never leak.
 
 ## Bring Your Own Data (BYOD)
@@ -139,6 +141,9 @@ into BYOD:
 
 ```bash
 go run ./cmd/alkitab-convert -id kjv -name "King James Version" -lang en en_kjv.json > kjv.json
+# USFM: auto-detected, or -format usfm. Indonesian book names: -name-locale id
+# Canon chapter-count check: -validate
+
 ```
 
 Or write the format by hand — one JSON file per translation in
@@ -169,7 +174,8 @@ Klinkert (1863/1879) and Melayu Baba (1913).
 
 | Var | Default | Purpose |
 |---|---|---|
-| `ALKITAB_PORT` | `3000` | Listen port |
+| `ALKITAB_PORT` | `3000` | Listen port (used when `ALKITAB_LISTEN` is unset) |
+| `ALKITAB_LISTEN` | *(none)* | Full listen address, e.g. `127.0.0.1:3000` |
 | `ALKITAB_DATA_DIR` | *(none)* | Extra translations directory |
 | `ALKITAB_SCRAPE` | `0` | `1` enables the `scrape` adapter |
 | `ALKITAB_BASE_URL` | `https://alkitab.mobi` | Scrape base URL |

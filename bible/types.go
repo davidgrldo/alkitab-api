@@ -29,9 +29,24 @@ type Book struct {
 }
 
 type Translation struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Language string `json:"language"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Language     string   `json:"language"`
+	Origin       string   `json:"origin,omitempty"`
+	Capabilities []string `json:"capabilities,omitempty"`
+}
+
+// SearchFilter narrows Search. Empty fields mean "any".
+type SearchFilter struct {
+	Book      string
+	Testament string
+	WholeWord bool
+}
+
+// SampleFilter narrows DailyVerse and RandomVerse to content verses.
+type SampleFilter struct {
+	Book      string
+	Testament string
 }
 
 type VerseHit struct {
@@ -45,6 +60,8 @@ var (
 	ErrNotFound           = errors.New("bible: not found")
 	ErrUnsupportedVersion = errors.New("bible: unsupported version")
 	ErrUnsupportedFeature = errors.New("bible: feature not supported by active source")
+	ErrInvalidRef         = errors.New("bible: invalid reference")
+	ErrUpstream           = errors.New("bible: upstream error")
 )
 
 // Source is the mandatory contract every adapter implements.
