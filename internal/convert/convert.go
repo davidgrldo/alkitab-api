@@ -187,6 +187,25 @@ func buildBook(bookID, locale string, chapters [][]string) (OutBook, int, error)
 	return ob, n, nil
 }
 
+func From(raw []byte, format string, opt Options) (OutFile, error) {
+	switch strings.ToLower(format) {
+	case "usfm":
+		return FromUSFM(raw, opt)
+	case "osis":
+		return FromOSIS(raw, opt)
+	case "json":
+		return FromJSON(raw, opt)
+	default:
+		if DetectUSFM(raw) {
+			return FromUSFM(raw, opt)
+		}
+		if DetectOSIS(raw) {
+			return FromOSIS(raw, opt)
+		}
+		return FromJSON(raw, opt)
+	}
+}
+
 func maybeValidate(out OutFile, validate bool) error {
 	if !validate {
 		return nil

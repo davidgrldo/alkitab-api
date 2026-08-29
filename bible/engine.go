@@ -16,11 +16,12 @@ type Engine struct {
 	mu  sync.RWMutex
 	// cache holds *Chapter values that are treated as immutable after store;
 	// callers must not mutate them.
-	cache map[string]*Chapter
+	cache   map[string]*Chapter
+	indexes map[string]*searchIndex
 }
 
 func New(src Source) *Engine {
-	return &Engine{src: src, cache: make(map[string]*Chapter)}
+	return &Engine{src: src, cache: make(map[string]*Chapter), indexes: make(map[string]*searchIndex)}
 }
 
 // Source returns the underlying source (used by the server for listings).
@@ -86,22 +87,11 @@ func (e *Engine) Search(version, query string) ([]VerseHit, error) {
 }
 
 func (e *Engine) SearchFiltered(version, query string, f SearchFilter) ([]VerseHit, error) {
-	c, ok := e.corpus()
-	if !ok {
-		return nil, ErrUnsupportedFeature
-	}
-	all, err := c.AllVerses(version)
+	ix, err := e.ensureIndex(version)
 	if err != nil {
 		return nil, err
 	}
-	all = filterHits(all, f.Book, f.Testament)
-	var hits []VerseHit
-	for _, h := range all {
-		if textMatches(h.Verse.Content, query, f.WholeWord) {
-			hits = append(hits, h)
-		}
-	}
-	return hits, nil
+	return ix.lookup(query, f), nil
 }
 
 func (e *Engine) DailyVerse(version string, t time.Time) (*VerseHit, error) {
@@ -139,6 +129,25 @@ func (e *Engine) RandomVerseFiltered(version string, f SampleFilter) (*VerseHit,
 }
 
 func (e *Engine) samplePool(version string, f SampleFilter) ([]VerseHit, error) {
+	ix, err := e.ensureIndex(version)
+	if err != nil {
+		return nil, err
+	}
+	all := filterHits(ix.hits, f.Book, f.Testament)
+	if len(all) == 0 {
+		return nil, ErrNotFound
+	}
+	return all, nil
+}
+
+func (e *Engine) ensureIndex(version string) (*searchIndex, error) {
+	e.mu.RLock()
+	if ix, ok := e.indexes[version]; ok {
+		e.mu.RUnlock()
+		return ix, nil
+	}
+	e.mu.RUnlock()
+
 	c, ok := e.corpus()
 	if !ok {
 		return nil, ErrUnsupportedFeature
@@ -147,11 +156,15 @@ func (e *Engine) samplePool(version string, f SampleFilter) ([]VerseHit, error) 
 	if err != nil {
 		return nil, err
 	}
-	all = filterHits(all, f.Book, f.Testament)
-	if len(all) == 0 {
-		return nil, ErrNotFound
+	ix := buildIndex(contentHits(all))
+	e.mu.Lock()
+	if existing, ok := e.indexes[version]; ok {
+		e.mu.Unlock()
+		return existing, nil
 	}
-	return all, nil
+	e.indexes[version] = ix
+	e.mu.Unlock()
+	return ix, nil
 }
 
 func hashSeed(s string) uint32 {

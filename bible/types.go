@@ -18,6 +18,15 @@ type Chapter struct {
 	Book        string  `json:"book"`
 	Number      int     `json:"chapter"`
 	Verses      []Verse `json:"verses"`
+	Prev        *Ref    `json:"prev,omitempty"`
+	Next        *Ref    `json:"next,omitempty"`
+}
+
+// Ref is a book/chapter/verse pointer for prev/next navigation.
+type Ref struct {
+	Book    string `json:"book"`
+	Chapter int    `json:"chapter"`
+	Verse   int    `json:"verse"`
 }
 
 type Book struct {

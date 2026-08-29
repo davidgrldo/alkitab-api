@@ -107,6 +107,13 @@ func TestEngineSearchSkipsTitleAndWholeWord(t *testing.T) {
 	if len(hits) != 1 || hits[0].Book != "phlm" {
 		t.Errorf("whole word: %+v", hits)
 	}
+	hits, err = e.SearchFiltered("kjv", "hello friend", SearchFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 1 || hits[0].Book != "3john" {
+		t.Errorf("phrase index: %+v", hits)
+	}
 }
 
 func TestEngineCatalogLocal(t *testing.T) {
