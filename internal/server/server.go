@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -192,14 +194,47 @@ func (s *Server) writeChapter(w http.ResponseWriter, r *http.Request, c *bible.C
 		}
 	}
 	also := s.loadAlso(r.Context(), r.URL.Query().Get("also"), out.Book, out.Number, spec)
-	if len(also) == 0 {
-		writeJSON(w, out)
+	nav := bible.Chapter{Translation: c.Translation, Book: c.Book, Number: c.Number, Verses: c.Verses}
+	s.eng.AttachNeighbors(r.Context(), nav.Translation, &nav, spec)
+	out.Prev, out.Next = nav.Prev, nav.Next
+	var payload any = out
+	if len(also) > 0 {
+		payload = struct {
+			bible.Chapter
+			Also map[string]bible.Chapter `json:"also"`
+		}{Chapter: out, Also: also}
+	}
+	s.writeCachedJSON(w, r, payload)
+}
+
+func (s *Server) writeCachedJSON(w http.ResponseWriter, r *http.Request, v any) {
+	body, err := json.Marshal(v)
+	if err != nil {
+		s.mapErr(w, err)
 		return
 	}
-	writeJSON(w, struct {
-		bible.Chapter
-		Also map[string]bible.Chapter `json:"also"`
-	}{Chapter: out, Also: also})
+	sum := sha256.Sum256(body)
+	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
+	w.Header().Set("ETag", etag)
+	if match := r.Header.Get("If-None-Match"); match != "" && etagMatch(match, etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(append(body, '\n'))
+}
+
+func etagMatch(header, etag string) bool {
+	for _, part := range strings.Split(header, ",") {
+		p := strings.TrimSpace(part)
+		if strings.HasPrefix(p, "W/") {
+			p = strings.TrimSpace(p[2:])
+		}
+		if p == etag || p == "*" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) loadAlso(ctx context.Context, raw, book string, chapter int, spec *bible.VerseSpec) map[string]bible.Chapter {

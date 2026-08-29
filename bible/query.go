@@ -100,3 +100,22 @@ func decodeLastRune(s string) (rune, int) {
 	}
 	return last, 1
 }
+
+func tokenize(s string) []string {
+	var out []string
+	var b strings.Builder
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(unicode.ToLower(r))
+			continue
+		}
+		if b.Len() > 0 {
+			out = append(out, b.String())
+			b.Reset()
+		}
+	}
+	if b.Len() > 0 {
+		out = append(out, b.String())
+	}
+	return out
+}

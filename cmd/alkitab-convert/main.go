@@ -1,5 +1,5 @@
-// Command alkitab-convert converts a public-domain Bible dump (thiagobodruk JSON
-// or USFM) into the alkitab-api BYOD format.
+// Command alkitab-convert converts a public-domain Bible dump (thiagobodruk JSON,
+// USFM, or OSIS) into the alkitab-api BYOD format.
 //
 //	alkitab-convert -id kjv -name "King James Version" -lang en en_kjv.json > kjv.json
 package main
@@ -19,7 +19,7 @@ func main() {
 	name := flag.String("name", "", "translation display name (required)")
 	lang := flag.String("lang", "en", "translation language code")
 	locale := flag.String("name-locale", "en", "book names: en or id")
-	format := flag.String("format", "auto", "auto, json, or usfm")
+	format := flag.String("format", "auto", "auto, json, usfm, or osis")
 	validate := flag.Bool("validate", false, "require canon chapter counts")
 	flag.Parse()
 	if *id == "" || *name == "" || flag.NArg() != 1 {
@@ -33,16 +33,7 @@ func main() {
 	}
 	opt := convert.Options{ID: *id, Name: *name, Lang: *lang, Locale: *locale, Validate: *validate}
 
-	useUSFM := *format == "usfm" || (*format == "auto" && convert.DetectUSFM(raw))
-	if *format == "json" {
-		useUSFM = false
-	}
-	var out convert.OutFile
-	if useUSFM {
-		out, err = convert.FromUSFM(raw, opt)
-	} else {
-		out, err = convert.FromJSON(raw, opt)
-	}
+	out, err := convert.From(raw, *format, opt)
 	if err != nil {
 		log.Fatal(err)
 	}

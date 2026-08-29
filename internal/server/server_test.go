@@ -113,6 +113,14 @@ func TestPassageQuery(t *testing.T) {
 	if m["book"] != "3john" || m["chapter"] != float64(1) {
 		t.Errorf("book/chapter: %v", m)
 	}
+	prev, _ := m["prev"].(map[string]any)
+	if prev["verse"] != float64(3) {
+		t.Errorf("prev of 4-6: %v", m["prev"])
+	}
+	next, _ := m["next"].(map[string]any)
+	if next["verse"] != float64(7) {
+		t.Errorf("next of 4-6: %v", m["next"])
+	}
 }
 
 func TestPassageQueryMissing(t *testing.T) {
@@ -239,4 +247,42 @@ func TestDailyAndRandom(t *testing.T) {
 	h := newServer(t).Handler()
 	getJSON(t, h, "/v1/daily?version=kjv", 200)
 	getJSON(t, h, "/v1/random?version=kjv", 200)
+}
+
+func TestNeighborsAndETag(t *testing.T) {
+	h := newServer(t).Handler()
+	m := getJSON(t, h, "/v1/kjv/3john/1/4", 200)
+	prev, _ := m["prev"].(map[string]any)
+	next, _ := m["next"].(map[string]any)
+	if prev["verse"] != float64(3) || next["verse"] != float64(5) {
+		t.Fatalf("verse neighbors: prev=%v next=%v", prev, next)
+	}
+	ch := getJSON(t, h, "/v1/kjv/3john/1", 200)
+	if ch["prev"] != nil {
+		t.Errorf("first book chapter should have no prev, got %v", ch["prev"])
+	}
+	nch, _ := ch["next"].(map[string]any)
+	if nch["book"] != "phlm" || nch["verse"] != float64(1) {
+		t.Errorf("next chapter: %v", nch)
+	}
+	end := getJSON(t, h, "/v1/kjv/3john/1/14", 200)
+	nx, _ := end["next"].(map[string]any)
+	if nx["book"] != "phlm" {
+		t.Errorf("after last verse: %v", nx)
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/kjv/3john/1/4", nil)
+	h.ServeHTTP(rr, req)
+	etag := rr.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("missing ETag")
+	}
+	rr2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodGet, "/v1/kjv/3john/1/4", nil)
+	req2.Header.Set("If-None-Match", etag)
+	h.ServeHTTP(rr2, req2)
+	if rr2.Code != 304 {
+		t.Fatalf("If-None-Match: status %d, want 304", rr2.Code)
+	}
 }
