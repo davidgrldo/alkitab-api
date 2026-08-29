@@ -601,19 +601,19 @@
         <div class="m">GET</div>
         <div class="path">…/<span class="v">{chapter}</span>/<span class="v">{verse}</span></div>
         <div class="ttl">Ayat atau rentang</div>
-        <p><code class="mono mono-sm">4</code> atau <code class="mono mono-sm">16-18</code>, inklusif. Pointer ayat tetangga, <code class="mono mono-sm">?also=</code> sama.</p>
+        <p><code class="mono mono-sm">4</code>, <code class="mono mono-sm">16-18</code>, atau <code class="mono mono-sm">16,17</code>. Pointer ayat tetangga, <code class="mono mono-sm">?also=</code> sama.</p>
       </div>
       <div class="ep">
         <div class="m">GET</div>
         <div class="path">/v1/passage?version=&amp;q=</div>
         <div class="ttl">Referensi manusia</div>
-        <p><code class="mono mono-sm">3john 1:4-6</code>, <code class="mono mono-sm">3 John 1:4</code>, <code class="mono mono-sm">Yohanes 3:16</code>.</p>
+        <p><code class="mono mono-sm">3john 1:4-6</code>, <code class="mono mono-sm">Yohanes 3:16,17</code>, <code class="mono mono-sm">Matt 5:1-7:29</code>.</p>
       </div>
       <div class="ep">
         <div class="m">GET</div>
         <div class="path">/v1/search?q=<span class="v">{q}</span></div>
         <div class="ttl">Pencarian teks</div>
-        <p>Korpus lokal. Filter <code class="mono mono-sm">book</code>, <code class="mono mono-sm">testament</code>, <code class="mono mono-sm">whole=1</code>. Limit max 200. Judul dilewati.</p>
+        <p>Korpus lokal. Hit membawa <code class="mono mono-sm">snippet</code> dengan <code class="mono mono-sm">**match**</code>. Filter <code class="mono mono-sm">book</code>, <code class="mono mono-sm">testament</code>, <code class="mono mono-sm">whole=1</code>. Limit max 200. Judul dilewati.</p>
       </div>
       <div class="ep">
         <div class="m">GET</div>
@@ -625,7 +625,7 @@
         <div class="m">GET</div>
         <div class="path">/v1/random?version=<span class="v">{v}</span></div>
         <div class="ttl">Ayat acak</div>
-        <p>Sama: hanya isi, filter kitab/perjanjian. Bukan judul pasal.</p>
+        <p>Sama: hanya isi, filter kitab/perjanjian. <code class="mono mono-sm">seed=</code> untuk hasil yang bisa diulang.</p>
       </div>
     </div>
   </div>
@@ -673,7 +673,7 @@
     <div class="byod">
       <div>
         <p class="pull">“Tidak ada teks <em>berhak cipta</em> di repositori ini — dan sengaja demikian.”</p>
-        <p class="byod-sub">Contoh tertanam adalah domain-publik — KJV, hanya 3 Yohanes &amp; Filemon. Butuh Alkitab utuh? <a href="https://github.com/davidgrldo/alkitab-api/releases/latest/download/kjv.json" target="_blank" rel="noopener">KJV lengkap</a> tersedia sebagai aset rilis, dan <code class="mono mono-sm">alkitab-convert</code> mengubah dump JSON, USFM, atau OSIS domain-publik ke format ini. File runtime dengan <code class="mono mono-sm">id</code> yang sama menimpa contoh tertanam. Terjemahan berhak cipta seperti TB © LAI hanya bisa diakses saat runtime lewat proxy scrape — tanggung jawab operator, bukan proyek.</p>
+        <p class="byod-sub">Contoh tertanam adalah domain-publik — KJV, hanya 3 Yohanes &amp; Filemon. Butuh Alkitab utuh? <a href="https://github.com/davidgrldo/alkitab-api/releases/latest/download/kjv.json" target="_blank" rel="noopener">KJV lengkap</a> tersedia sebagai aset rilis, dan <code class="mono mono-sm">alkitab-convert</code> mengubah dump JSON, USFM, OSIS, atau CSV domain-publik ke format ini (catatan kaki menjadi <code class="mono mono-sm">type=note</code>). File runtime dengan <code class="mono mono-sm">id</code> yang sama menimpa contoh tertanam. Terjemahan berhak cipta seperti TB © LAI hanya bisa diakses saat runtime lewat proxy scrape — tanggung jawab operator, bukan proyek.</p>
         <div class="envs">
           <div class="env"><code>ALKITAB_PORT</code><span>port listen · default 3000</span></div>
           <div class="env"><code>ALKITAB_LISTEN</code><span>alamat penuh · mis. 127.0.0.1:3000</span></div>

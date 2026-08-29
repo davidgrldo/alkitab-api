@@ -119,3 +119,56 @@ func tokenize(s string) []string {
 	}
 	return out
 }
+
+// HighlightSnippet returns a window around the first case-insensitive match,
+// wrapping the match in ** for clients that highlight search hits.
+func HighlightSnippet(content, query string, radius int) string {
+	q := strings.TrimSpace(query)
+	if q == "" {
+		return content
+	}
+	if radius < 0 {
+		radius = 40
+	}
+	orig := []rune(content)
+	lower := []rune(strings.ToLower(content))
+	needle := []rune(strings.ToLower(q))
+	pos := -1
+	for i := 0; i+len(needle) <= len(lower); i++ {
+		match := true
+		for j := range needle {
+			if lower[i+j] != needle[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			pos = i
+			break
+		}
+	}
+	if pos < 0 {
+		return content
+	}
+	start := pos - radius
+	if start < 0 {
+		start = 0
+	}
+	end := pos + len(needle) + radius
+	if end > len(orig) {
+		end = len(orig)
+	}
+	var b strings.Builder
+	if start > 0 {
+		b.WriteRune('…')
+	}
+	b.WriteString(string(orig[start:pos]))
+	b.WriteString("**")
+	b.WriteString(string(orig[pos : pos+len(needle)]))
+	b.WriteString("**")
+	b.WriteString(string(orig[pos+len(needle) : end]))
+	if end < len(orig) {
+		b.WriteRune('…')
+	}
+	return b.String()
+}

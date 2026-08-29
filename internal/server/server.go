@@ -155,12 +155,12 @@ func (s *Server) chapterVerse(w http.ResponseWriter, r *http.Request) {
 		s.mapErr(w, err)
 		return
 	}
-	spec, err := bible.ParseVerseSpec(r.PathValue("verse"))
+	specs, err := bible.ParseVerseList(r.PathValue("verse"))
 	if err != nil {
 		s.mapErr(w, err)
 		return
 	}
-	s.writeChapter(w, r, c, &spec)
+	s.writeChapter(w, r, c, specs)
 }
 
 func (s *Server) passage(w http.ResponseWriter, r *http.Request) {
@@ -175,26 +175,88 @@ func (s *Server) passage(w http.ResponseWriter, r *http.Request) {
 		s.mapErr(w, err)
 		return
 	}
-	c, err := s.eng.ChapterContext(r.Context(), version, ref.BookID, ref.Chapter)
+	if len(ref.Spans) <= 1 {
+		c, err := s.eng.ChapterContext(r.Context(), version, ref.BookID, ref.Chapter)
+		if err != nil {
+			s.mapErr(w, err)
+			return
+		}
+		s.writeChapter(w, r, c, ref.Spans[0].Verses)
+		return
+	}
+	chs, err := s.eng.LoadPassage(r.Context(), version, ref)
 	if err != nil {
 		s.mapErr(w, err)
 		return
 	}
-	spec := ref.Verses
-	s.writeChapter(w, r, c, &spec)
+	first, err := s.eng.ChapterContext(r.Context(), version, ref.BookID, ref.Spans[0].Chapter)
+	if err != nil {
+		s.mapErr(w, err)
+		return
+	}
+	last, err := s.eng.ChapterContext(r.Context(), version, ref.BookID, ref.Spans[len(ref.Spans)-1].Chapter)
+	if err != nil {
+		s.mapErr(w, err)
+		return
+	}
+	navFirst := bible.Chapter{Translation: first.Translation, Book: first.Book, Number: first.Number, Verses: first.Verses}
+	navLast := bible.Chapter{Translation: last.Translation, Book: last.Book, Number: last.Number, Verses: last.Verses}
+	from, _ := specBounds(ref.Spans[0].Verses)
+	_, to := specBounds(ref.Spans[len(ref.Spans)-1].Verses)
+	s.eng.AttachNeighbors(r.Context(), navFirst.Translation, &navFirst, verseSpecPtr(from, from))
+	s.eng.AttachNeighbors(r.Context(), navLast.Translation, &navLast, verseSpecPtr(to, to))
+	slim := make([]map[string]any, 0, len(chs))
+	for _, ch := range chs {
+		slim = append(slim, map[string]any{"chapter": ch.Number, "verses": ch.Verses})
+	}
+	s.writeCachedJSON(w, r, map[string]any{
+		"version":  version,
+		"book":     ref.BookID,
+		"chapters": slim,
+		"prev":     navFirst.Prev,
+		"next":     navLast.Next,
+	})
 }
 
-func (s *Server) writeChapter(w http.ResponseWriter, r *http.Request, c *bible.Chapter, spec *bible.VerseSpec) {
+func specBounds(specs []bible.VerseSpec) (from, to int) {
+	if len(specs) == 0 {
+		return 0, 0
+	}
+	from, to = specs[0].From, specs[0].To
+	for _, s := range specs[1:] {
+		if s.From < from {
+			from = s.From
+		}
+		if s.To > to {
+			to = s.To
+		}
+	}
+	return from, to
+}
+
+func verseSpecPtr(from, to int) *bible.VerseSpec {
+	if from < 1 {
+		return nil
+	}
+	return &bible.VerseSpec{From: from, To: to}
+}
+
+func (s *Server) writeChapter(w http.ResponseWriter, r *http.Request, c *bible.Chapter, specs []bible.VerseSpec) {
 	out := bible.Chapter{Translation: c.Translation, Book: c.Book, Number: c.Number, Verses: c.Verses}
-	if spec != nil {
-		out.Verses = bible.FilterVerses(c.Verses, *spec)
+	if len(specs) > 0 {
+		out.Verses = bible.FilterVerses(c.Verses, specs...)
 		if len(out.Verses) == 0 {
 			s.mapErr(w, bible.ErrNotFound)
 			return
 		}
 	}
-	also := s.loadAlso(r.Context(), r.URL.Query().Get("also"), out.Book, out.Number, spec)
+	also := s.loadAlso(r.Context(), r.URL.Query().Get("also"), out.Book, out.Number, specs)
 	nav := bible.Chapter{Translation: c.Translation, Book: c.Book, Number: c.Number, Verses: c.Verses}
+	var spec *bible.VerseSpec
+	if len(specs) > 0 {
+		from, to := specBounds(specs)
+		spec = &bible.VerseSpec{From: from, To: to}
+	}
 	s.eng.AttachNeighbors(r.Context(), nav.Translation, &nav, spec)
 	out.Prev, out.Next = nav.Prev, nav.Next
 	var payload any = out
@@ -237,7 +299,7 @@ func etagMatch(header, etag string) bool {
 	return false
 }
 
-func (s *Server) loadAlso(ctx context.Context, raw, book string, chapter int, spec *bible.VerseSpec) map[string]bible.Chapter {
+func (s *Server) loadAlso(ctx context.Context, raw, book string, chapter int, specs []bible.VerseSpec) map[string]bible.Chapter {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil
@@ -253,8 +315,8 @@ func (s *Server) loadAlso(ctx context.Context, raw, book string, chapter int, sp
 			continue
 		}
 		ch := bible.Chapter{Translation: c.Translation, Book: c.Book, Number: c.Number, Verses: c.Verses}
-		if spec != nil {
-			ch.Verses = bible.FilterVerses(c.Verses, *spec)
+		if len(specs) > 0 {
+			ch.Verses = bible.FilterVerses(c.Verses, specs...)
 			if len(ch.Verses) == 0 {
 				continue
 			}
@@ -404,6 +466,13 @@ func (s *Server) sampleParams(r *http.Request) (string, bible.SampleFilter, erro
 			return "", f, badRequest("invalid testament")
 		}
 		f.Testament = u
+	}
+	if ss := r.URL.Query().Get("seed"); ss != "" {
+		n, err := strconv.ParseInt(ss, 10, 64)
+		if err != nil {
+			return "", f, badRequest("invalid seed")
+		}
+		f.Seed = &n
 	}
 	return version, f, nil
 }

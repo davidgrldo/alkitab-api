@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/davidgrldo/alkitab-api/internal/convert"
 )
@@ -19,11 +20,12 @@ func main() {
 	name := flag.String("name", "", "translation display name (required)")
 	lang := flag.String("lang", "en", "translation language code")
 	locale := flag.String("name-locale", "en", "book names: en or id")
-	format := flag.String("format", "auto", "auto, json, usfm, or osis")
+	format := flag.String("format", "auto", "auto, json, usfm, osis, or csv")
 	validate := flag.Bool("validate", false, "require canon chapter counts")
+	outFmt := flag.String("out", "json", "json or csv")
 	flag.Parse()
 	if *id == "" || *name == "" || flag.NArg() != 1 {
-		fmt.Fprintln(os.Stderr, "usage: alkitab-convert -id kjv -name \"King James Version\" [-lang en] [-name-locale en] [-format auto] [-validate] input > out.json")
+		fmt.Fprintln(os.Stderr, "usage: alkitab-convert -id kjv -name \"King James Version\" [-lang en] [-name-locale en] [-format auto] [-out json] [-validate] input > out.json")
 		os.Exit(2)
 	}
 
@@ -37,9 +39,20 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	enc := json.NewEncoder(os.Stdout)
-	if err := enc.Encode(out); err != nil {
-		log.Fatal(err)
+	switch strings.ToLower(*outFmt) {
+	case "csv":
+		b, err := convert.ToCSV(out)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if _, err := os.Stdout.Write(b); err != nil {
+			log.Fatal(err)
+		}
+	default:
+		enc := json.NewEncoder(os.Stdout)
+		if err := enc.Encode(out); err != nil {
+			log.Fatal(err)
+		}
 	}
 	if out.Positional {
 		log.Print("note: book names missing from input — mapped by canonical position; spot-check the output")

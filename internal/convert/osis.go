@@ -76,7 +76,7 @@ func FromOSIS(raw []byte, opt Options) (OutFile, error) {
 				return OutFile{}, fmt.Errorf("osis: verse before chapter")
 			}
 			vn := osisVerseNum(attr(se, "osisID"))
-			text, err := innerText(dec, se.Name)
+			text, notes, err := innerVerse(dec, se.Name)
 			if err != nil {
 				return OutFile{}, err
 			}
@@ -86,6 +86,9 @@ func FromOSIS(raw []byte, opt Options) (OutFile, error) {
 			cur.ChapterData[chapIdx].Verses = append(cur.ChapterData[chapIdx].Verses, outVerse{Verse: vn, Type: "content", Content: text})
 			lastVerse = vn
 			out.VerseCount++
+			for _, n := range notes {
+				cur.ChapterData[chapIdx].Verses = append(cur.ChapterData[chapIdx].Verses, outVerse{Verse: vn, Type: "note", Content: n})
+			}
 		case "title":
 			if chapIdx < 0 {
 				_, _ = innerText(dec, se.Name)
@@ -141,6 +144,38 @@ func innerText(dec *xml.Decoder, until xml.Name) (string, error) {
 	}
 	_ = until
 	return strings.TrimSpace(b.String()), nil
+}
+
+func innerVerse(dec *xml.Decoder, until xml.Name) (string, []string, error) {
+	var b strings.Builder
+	var notes []string
+	depth := 1
+	for depth > 0 {
+		tok, err := dec.Token()
+		if err != nil {
+			return "", nil, err
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			if local(t.Name) == "note" {
+				n, err := innerText(dec, t.Name)
+				if err != nil {
+					return "", nil, err
+				}
+				if n != "" {
+					notes = append(notes, n)
+				}
+				continue
+			}
+			depth++
+		case xml.EndElement:
+			depth--
+		case xml.CharData:
+			b.Write(t)
+		}
+	}
+	_ = until
+	return strings.Join(strings.Fields(b.String()), " "), notes, nil
 }
 
 func osisChapterNum(id string) int {

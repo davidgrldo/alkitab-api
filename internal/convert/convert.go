@@ -2,6 +2,7 @@ package convert
 
 import (
 	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -141,9 +142,13 @@ func FromUSFM(raw []byte, opt Options) (OutFile, error) {
 			if err != nil {
 				return OutFile{}, fmt.Errorf("usfm: bad verse %q", rest)
 			}
-			cur.ChapterData[chapIdx].Verses = append(cur.ChapterData[chapIdx].Verses, outVerse{Verse: vn, Type: "content", Content: strings.TrimSpace(text)})
+			content, notes := splitUSFMNotes(strings.TrimSpace(text))
+			cur.ChapterData[chapIdx].Verses = append(cur.ChapterData[chapIdx].Verses, outVerse{Verse: vn, Type: "content", Content: content})
 			lastVerse = vn
 			out.VerseCount++
+			for _, n := range notes {
+				cur.ChapterData[chapIdx].Verses = append(cur.ChapterData[chapIdx].Verses, outVerse{Verse: vn, Type: "note", Content: n})
+			}
 		case strings.HasPrefix(tag, `\s`):
 			if chapIdx < 0 || rest == "" {
 				continue
@@ -193,6 +198,8 @@ func From(raw []byte, format string, opt Options) (OutFile, error) {
 		return FromUSFM(raw, opt)
 	case "osis":
 		return FromOSIS(raw, opt)
+	case "csv":
+		return FromCSV(raw, opt)
 	case "json":
 		return FromJSON(raw, opt)
 	default:
@@ -201,6 +208,9 @@ func From(raw []byte, format string, opt Options) (OutFile, error) {
 		}
 		if DetectOSIS(raw) {
 			return FromOSIS(raw, opt)
+		}
+		if DetectCSV(raw) {
+			return FromCSV(raw, opt)
 		}
 		return FromJSON(raw, opt)
 	}
@@ -249,4 +259,153 @@ func resolveUSFM(code string) (string, error) {
 		return id, nil
 	}
 	return bible.ResolveBookID(code)
+}
+
+func splitUSFMNotes(text string) (string, []string) {
+	var content strings.Builder
+	var notes []string
+	rest := text
+	for {
+		i := strings.Index(rest, `\f`)
+		if i < 0 {
+			content.WriteString(rest)
+			break
+		}
+		content.WriteString(rest[:i])
+		body := rest[i+2:]
+		end := strings.Index(body, `\f*`)
+		if end < 0 {
+			content.WriteString(rest[i:])
+			break
+		}
+		if n := usfmNoteText(body[:end]); n != "" {
+			notes = append(notes, n)
+		}
+		rest = body[end+3:]
+	}
+	return strings.Join(strings.Fields(content.String()), " "), notes
+}
+
+func usfmNoteText(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "+")
+	s = strings.TrimSpace(s)
+	if i := strings.Index(s, `\ft`); i >= 0 {
+		s = strings.TrimSpace(s[i+3:])
+	}
+	var b strings.Builder
+	for {
+		j := strings.Index(s, `\`)
+		if j < 0 {
+			b.WriteString(s)
+			break
+		}
+		b.WriteString(s[:j])
+		s = s[j+1:]
+		k := 0
+		for k < len(s) && s[k] != ' ' && s[k] != '\\' {
+			k++
+		}
+		s = strings.TrimSpace(s[k:])
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+func DetectCSV(raw []byte) bool {
+	s := strings.TrimSpace(string(bytes.TrimPrefix(raw, []byte("\xef\xbb\xbf"))))
+	line, _, _ := strings.Cut(s, "\n")
+	line = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(line, "\ufeff")))
+	return strings.HasPrefix(line, "book,")
+}
+
+func ToCSV(out OutFile) ([]byte, error) {
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	if err := w.Write([]string{"book", "chapter", "verse", "type", "content"}); err != nil {
+		return nil, err
+	}
+	for _, b := range out.Books {
+		for _, ch := range b.ChapterData {
+			for _, v := range ch.Verses {
+				if err := w.Write([]string{b.ID, strconv.Itoa(ch.Number), strconv.Itoa(v.Verse), v.Type, v.Content}); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+	w.Flush()
+	return buf.Bytes(), w.Error()
+}
+
+func FromCSV(raw []byte, opt Options) (OutFile, error) {
+	raw = bytes.TrimPrefix(raw, []byte("\xef\xbb\xbf"))
+	r := csv.NewReader(bytes.NewReader(raw))
+	rows, err := r.ReadAll()
+	if err != nil {
+		return OutFile{}, fmt.Errorf("csv: %w", err)
+	}
+	if len(rows) == 0 {
+		return OutFile{}, fmt.Errorf("csv: empty")
+	}
+	start := 0
+	if len(rows[0]) >= 1 && strings.EqualFold(rows[0][0], "book") {
+		start = 1
+	}
+	out := OutFile{Translation: bible.Translation{ID: opt.ID, Name: opt.Name, Language: opt.Lang}}
+	idx := map[string]int{}
+	for _, row := range rows[start:] {
+		if len(row) < 5 {
+			return OutFile{}, fmt.Errorf("csv: need book,chapter,verse,type,content")
+		}
+		id, err := bible.ResolveBookID(row[0])
+		if err != nil {
+			return OutFile{}, err
+		}
+		chNum, err := strconv.Atoi(strings.TrimSpace(row[1]))
+		if err != nil || chNum < 1 {
+			return OutFile{}, fmt.Errorf("csv: bad chapter %q", row[1])
+		}
+		vn, err := strconv.Atoi(strings.TrimSpace(row[2]))
+		if err != nil || vn < 1 {
+			return OutFile{}, fmt.Errorf("csv: bad verse %q", row[2])
+		}
+		typ := strings.TrimSpace(row[3])
+		if typ == "" {
+			typ = "content"
+		}
+		bi, ok := idx[id]
+		if !ok {
+			ob, _, err := buildBook(id, opt.Locale, nil)
+			if err != nil {
+				return OutFile{}, err
+			}
+			out.Books = append(out.Books, ob)
+			bi = len(out.Books) - 1
+			idx[id] = bi
+		}
+		book := &out.Books[bi]
+		ci := -1
+		for i := range book.ChapterData {
+			if book.ChapterData[i].Number == chNum {
+				ci = i
+				break
+			}
+		}
+		if ci < 0 {
+			book.ChapterData = append(book.ChapterData, outChapter{Number: chNum})
+			ci = len(book.ChapterData) - 1
+			book.Chapters = len(book.ChapterData)
+		}
+		book.ChapterData[ci].Verses = append(book.ChapterData[ci].Verses, outVerse{Verse: vn, Type: typ, Content: row[4]})
+		if typ == "content" {
+			out.VerseCount++
+		}
+	}
+	if len(out.Books) == 0 {
+		return OutFile{}, fmt.Errorf("csv: no rows")
+	}
+	if err := maybeValidate(out, opt.Validate); err != nil {
+		return OutFile{}, err
+	}
+	return out, nil
 }
