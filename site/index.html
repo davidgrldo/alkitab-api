@@ -385,7 +385,7 @@
 <span class="p">$</span> go run ./cmd/alkitab-api
   → listening on :3000 (scrape=<span class="k">false</span>)
 
-<span class="c"># ambil satu ayat</span>
+<span class="c"># satu ayat, atau rentang: …/1/4-6</span>
 <span class="p">$</span> curl localhost:3000/v1/kjv/3john/1/4
 {
   <span class="k">"version"</span>: <span class="s">"kjv"</span>,
@@ -564,7 +564,7 @@
         <div class="num">v</div>
         <div>
           <h4>JSON keluar</h4>
-          <p>Hasil di-cache, diserialisasi. Error bertipe memetakan ke kode status yang tepat — tak ada pesan internal yang bocor.</p>
+          <p>Hasil di-cache, diserialisasi. Error bertipe memetakan ke kode status yang tepat (404, 400, 501, 502 scrape) — tak ada pesan internal yang bocor.</p>
         </div>
       </div>
     </div>
@@ -575,51 +575,57 @@
   <div class="wrap">
     <div class="sec-head">
       <div class="index">Endpoint</div>
-      <h2>Tujuh rute, kontrak sederhana.</h2>
-      <p>JSON masuk, JSON keluar. <code class="mono mono-md">{book}</code> menerima id, nama, atau singkatan — Inggris maupun Indonesia.</p>
+      <h2>Delapan rute, kontrak yang sama.</h2>
+      <p>JSON masuk, JSON keluar. <code class="mono mono-md">{book}</code> menerima id, nama, atau singkatan — Inggris maupun Indonesia. <code class="mono mono-md">GET /v1</code> mendaftar rute; terjemahan scrape tidak punya <code class="mono mono-md">corpus</code>.</p>
     </div>
     <div class="ep-grid">
       <div class="ep wide">
         <div class="m">GET</div>
         <div class="path">/v1/translations</div>
         <div class="ttl">Daftar terjemahan</div>
-        <p>Terjemahan yang tersedia di source aktif (contoh tertanam + direktori data).</p>
+        <p>Source aktif, plus <code class="mono mono-sm">origin</code> (local atau proxy) dan <code class="mono mono-sm">capabilities</code>.</p>
       </div>
       <div class="ep wide">
         <div class="m">GET</div>
         <div class="path">/v1/<span class="v">{version}</span>/books</div>
         <div class="ttl">Struktur kitab</div>
-        <p>Daftar kitab, jumlah pasal, dan kategori PL/PB untuk satu terjemahan.</p>
+        <p>Kitab, jumlah pasal, PL/PB. <code class="mono mono-sm">?locale=id</code> untuk nama Indonesia.</p>
       </div>
       <div class="ep">
         <div class="m">GET</div>
         <div class="path">/v1/<span class="v">{version}</span>/<span class="v">{book}</span>/<span class="v">{chapter}</span></div>
         <div class="ttl">Satu pasal</div>
-        <p>Seluruh ayat, termasuk judul bagian.</p>
+        <p>Seluruh ayat, termasuk judul. <code class="mono mono-sm">?also=tb</code> untuk paralel.</p>
       </div>
       <div class="ep">
         <div class="m">GET</div>
-        <div class="path">/v1/<span class="v">{version}</span>/<span class="v">{book}</span>/<span class="v">{chapter}</span>/<span class="v">{verse}</span></div>
-        <div class="ttl">Satu ayat</div>
-        <p>Disaring ke satu nomor ayat.</p>
+        <div class="path">…/<span class="v">{chapter}</span>/<span class="v">{verse}</span></div>
+        <div class="ttl">Ayat atau rentang</div>
+        <p><code class="mono mono-sm">4</code> atau <code class="mono mono-sm">16-18</code>, inklusif. <code class="mono mono-sm">?also=</code> sama.</p>
       </div>
       <div class="ep">
         <div class="m">GET</div>
-        <div class="path">/v1/search?q=<span class="v">{q}</span>&amp;version=<span class="v">{v}</span></div>
+        <div class="path">/v1/passage?version=&amp;q=</div>
+        <div class="ttl">Referensi manusia</div>
+        <p><code class="mono mono-sm">3john 1:4-6</code>, <code class="mono mono-sm">3 John 1:4</code>, <code class="mono mono-sm">Yohanes 3:16</code>.</p>
+      </div>
+      <div class="ep">
+        <div class="m">GET</div>
+        <div class="path">/v1/search?q=<span class="v">{q}</span></div>
         <div class="ttl">Pencarian teks</div>
-        <p>Substring case-insensitive di korpus lokal.</p>
+        <p>Korpus lokal. Filter <code class="mono mono-sm">book</code>, <code class="mono mono-sm">testament</code>, <code class="mono mono-sm">whole=1</code>. Limit max 200. Judul dilewati.</p>
       </div>
       <div class="ep">
         <div class="m">GET</div>
         <div class="path">/v1/daily?version=<span class="v">{v}</span></div>
         <div class="ttl">Ayat hari ini</div>
-        <p>Deterministik per tanggal &amp; versi (UTC).</p>
+        <p>Hanya ayat isi. <code class="mono mono-sm">date=YYYY-MM-DD</code>, <code class="mono mono-sm">tz</code>, kitab atau perjanjian opsional.</p>
       </div>
       <div class="ep">
         <div class="m">GET</div>
         <div class="path">/v1/random?version=<span class="v">{v}</span></div>
         <div class="ttl">Ayat acak</div>
-        <p>Seed otomatis dari math/rand/v2.</p>
+        <p>Sama: hanya isi, filter kitab/perjanjian. Bukan judul pasal.</p>
       </div>
     </div>
   </div>
@@ -670,6 +676,7 @@
         <p class="byod-sub">Contoh tertanam adalah domain-publik — KJV, hanya 3 Yohanes &amp; Filemon. Butuh Alkitab utuh? <a href="https://github.com/davidgrldo/alkitab-api/releases/latest/download/kjv.json" target="_blank" rel="noopener">KJV lengkap</a> tersedia sebagai aset rilis, dan <code class="mono mono-sm">alkitab-convert</code> mengubah dump domain-publik lain ke format ini. File runtime dengan <code class="mono mono-sm">id</code> yang sama menimpa contoh tertanam. Terjemahan berhak cipta seperti TB © LAI hanya bisa diakses saat runtime lewat proxy scrape — tanggung jawab operator, bukan proyek.</p>
         <div class="envs">
           <div class="env"><code>ALKITAB_PORT</code><span>port listen · default 3000</span></div>
+          <div class="env"><code>ALKITAB_LISTEN</code><span>alamat penuh · mis. 127.0.0.1:3000</span></div>
           <div class="env"><code>ALKITAB_DATA_DIR</code><span>direktori terjemahan tambahan</span></div>
           <div class="env"><code>ALKITAB_SCRAPE</code><span>1 → aktifkan adapter scrape</span></div>
           <div class="env"><code>ALKITAB_BASE_URL</code><span>basis scrape · default alkitab.mobi</span></div>
