@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -12,6 +13,8 @@ import (
 	"github.com/davidgrldo/alkitab-api/bible"
 )
 
+const maxSearchLimit = 200
+
 type Server struct {
 	eng *bible.Engine
 }
@@ -20,22 +23,29 @@ func New(e *bible.Engine) *Server { return &Server{eng: e} }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1", s.discovery)
 	mux.HandleFunc("GET /v1/translations", s.translations)
 	mux.HandleFunc("GET /v1/{version}/books", s.books)
 	mux.HandleFunc("GET /v1/{version}/{book}/{chapter}/{verse}", s.chapterVerse)
 	mux.HandleFunc("GET /v1/{version}/{book}/{chapter}", s.chapter)
+	mux.HandleFunc("GET /v1/passage", s.passage)
 	mux.HandleFunc("GET /v1/search", s.search)
 	mux.HandleFunc("GET /v1/daily", s.daily)
 	mux.HandleFunc("GET /v1/random", s.random)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok"))
 	})
-	// ponytail: public read-only API — blanket ACAO:* so browser pages (e.g. the microsite demo) can fetch it.
-	// Verses are immutable, so most responses are safely cacheable; random must never be, daily only briefly.
+	mux.HandleFunc("GET /readyz", s.readyz)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		switch {
-		case r.URL.Path == "/healthz", strings.HasPrefix(r.URL.Path, "/v1/random"):
+		case r.URL.Path == "/healthz", r.URL.Path == "/readyz", strings.HasPrefix(r.URL.Path, "/v1/random"):
 			w.Header().Set("Cache-Control", "no-store")
 		case strings.HasPrefix(r.URL.Path, "/v1/daily"):
 			w.Header().Set("Cache-Control", "public, max-age=300")
@@ -56,7 +66,6 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
-// httpError is a sentinel for HTTP-level errors (e.g. 400) that mapErr translates.
 type httpError struct {
 	status int
 	msg    string
@@ -75,20 +84,47 @@ func (s *Server) mapErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, bible.ErrNotFound), errors.Is(err, bible.ErrUnsupportedVersion):
 		writeError(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, bible.ErrInvalidRef):
+		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, bible.ErrUnsupportedFeature):
 		writeError(w, http.StatusNotImplemented, err.Error())
+	case errors.Is(err, bible.ErrUpstream):
+		writeError(w, http.StatusBadGateway, err.Error())
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		writeError(w, http.StatusGatewayTimeout, err.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, err.Error())
 	}
 }
 
+func (s *Server) discovery(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]any{
+		"version": "v1",
+		"endpoints": []string{
+			"GET /v1/translations",
+			"GET /v1/{version}/books",
+			"GET /v1/{version}/{book}/{chapter}",
+			"GET /v1/{version}/{book}/{chapter}/{verse}",
+			"GET /v1/passage",
+			"GET /v1/search",
+			"GET /v1/daily",
+			"GET /v1/random",
+		},
+	})
+}
+
+func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {
+	if len(s.eng.Source().Translations()) == 0 {
+		writeError(w, http.StatusServiceUnavailable, "no translations loaded")
+		return
+	}
+	w.Write([]byte("ok"))
+}
+
 func (s *Server) translations(w http.ResponseWriter, r *http.Request) {
-	// ponytail: deterministic order — sort.Slice by ID; raw map iteration in Source().Translations() is non-deterministic.
-	ts := s.eng.Source().Translations()
-	out := make([]bible.Translation, len(ts))
-	copy(out, ts)
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	writeJSON(w, map[string]any{"translations": out})
+	ts := s.eng.Catalog()
+	sort.Slice(ts, func(i, j int) bool { return ts[i].ID < ts[j].ID })
+	writeJSON(w, map[string]any{"translations": ts})
 }
 
 func (s *Server) books(w http.ResponseWriter, r *http.Request) {
@@ -98,6 +134,7 @@ func (s *Server) books(w http.ResponseWriter, r *http.Request) {
 		s.mapErr(w, err)
 		return
 	}
+	b = bible.LocalizeBooks(b, r.URL.Query().Get("locale"))
 	writeJSON(w, map[string]any{"books": b})
 }
 
@@ -107,7 +144,7 @@ func (s *Server) chapter(w http.ResponseWriter, r *http.Request) {
 		s.mapErr(w, err)
 		return
 	}
-	writeJSON(w, c)
+	s.writeChapter(w, r, c, nil)
 }
 
 func (s *Server) chapterVerse(w http.ResponseWriter, r *http.Request) {
@@ -116,23 +153,80 @@ func (s *Server) chapterVerse(w http.ResponseWriter, r *http.Request) {
 		s.mapErr(w, err)
 		return
 	}
-	vn, err := strconv.Atoi(r.PathValue("verse"))
+	spec, err := bible.ParseVerseSpec(r.PathValue("verse"))
 	if err != nil {
-		s.mapErr(w, badRequest("invalid verse"))
+		s.mapErr(w, err)
 		return
 	}
-	filtered := make([]bible.Verse, 0)
-	for _, v := range c.Verses {
-		if v.Number == vn {
-			filtered = append(filtered, v)
+	s.writeChapter(w, r, c, &spec)
+}
+
+func (s *Server) passage(w http.ResponseWriter, r *http.Request) {
+	version := r.URL.Query().Get("version")
+	q := r.URL.Query().Get("q")
+	if version == "" || q == "" {
+		s.mapErr(w, badRequest("missing query parameter 'version' or 'q'"))
+		return
+	}
+	ref, err := bible.ParsePassage(q)
+	if err != nil {
+		s.mapErr(w, err)
+		return
+	}
+	c, err := s.eng.ChapterContext(r.Context(), version, ref.BookID, ref.Chapter)
+	if err != nil {
+		s.mapErr(w, err)
+		return
+	}
+	spec := ref.Verses
+	s.writeChapter(w, r, c, &spec)
+}
+
+func (s *Server) writeChapter(w http.ResponseWriter, r *http.Request, c *bible.Chapter, spec *bible.VerseSpec) {
+	out := bible.Chapter{Translation: c.Translation, Book: c.Book, Number: c.Number, Verses: c.Verses}
+	if spec != nil {
+		out.Verses = bible.FilterVerses(c.Verses, *spec)
+		if len(out.Verses) == 0 {
+			s.mapErr(w, bible.ErrNotFound)
+			return
 		}
 	}
-	if len(filtered) == 0 {
-		s.mapErr(w, bible.ErrNotFound)
+	also := s.loadAlso(r.Context(), r.URL.Query().Get("also"), out.Book, out.Number, spec)
+	if len(also) == 0 {
+		writeJSON(w, out)
 		return
 	}
-	// ponytail: pakai struct Chapter agar urutan field konsisten dengan endpoint pasal (map = key alfabetis).
-	writeJSON(w, bible.Chapter{Translation: c.Translation, Book: c.Book, Number: c.Number, Verses: filtered})
+	writeJSON(w, struct {
+		bible.Chapter
+		Also map[string]bible.Chapter `json:"also"`
+	}{Chapter: out, Also: also})
+}
+
+func (s *Server) loadAlso(ctx context.Context, raw, book string, chapter int, spec *bible.VerseSpec) map[string]bible.Chapter {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	out := map[string]bible.Chapter{}
+	for _, id := range strings.Split(raw, ",") {
+		id = strings.TrimSpace(strings.ToLower(id))
+		if id == "" {
+			continue
+		}
+		c, err := s.eng.ChapterContext(ctx, id, book, chapter)
+		if err != nil {
+			continue
+		}
+		ch := bible.Chapter{Translation: c.Translation, Book: c.Book, Number: c.Number, Verses: c.Verses}
+		if spec != nil {
+			ch.Verses = bible.FilterVerses(c.Verses, *spec)
+			if len(ch.Verses) == 0 {
+				continue
+			}
+		}
+		out[id] = ch
+	}
+	return out
 }
 
 func (s *Server) resolveChapter(r *http.Request) (*bible.Chapter, error) {
@@ -145,7 +239,7 @@ func (s *Server) resolveChapter(r *http.Request) (*bible.Chapter, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.eng.Chapter(version, bookID, chap)
+	return s.eng.ChapterContext(r.Context(), version, bookID, chap)
 }
 
 func (s *Server) search(w http.ResponseWriter, r *http.Request) {
@@ -154,7 +248,6 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "missing query parameter 'q'")
 		return
 	}
-	// ponytail: limit di handler, bukan engine — engine tetap mengembalikan semua; total memberi tahu klien ada truncation.
 	limit := 50
 	if ls := r.URL.Query().Get("limit"); ls != "" {
 		n, err := strconv.Atoi(ls)
@@ -164,22 +257,74 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = n
 	}
+	if limit > maxSearchLimit {
+		limit = maxSearchLimit
+	}
+	offset := 0
+	if os := r.URL.Query().Get("offset"); os != "" {
+		n, err := strconv.Atoi(os)
+		if err != nil || n < 0 {
+			writeError(w, http.StatusBadRequest, "invalid offset")
+			return
+		}
+		offset = n
+	}
 	version := r.URL.Query().Get("version")
-	hits, err := s.eng.Search(version, q)
+	if version == "" {
+		v, err := s.eng.DefaultCorpusVersion()
+		if err != nil {
+			s.mapErr(w, badRequest("missing query parameter 'version'"))
+			return
+		}
+		version = v
+	}
+	var f bible.SearchFilter
+	if bs := r.URL.Query().Get("book"); bs != "" {
+		id, err := bible.ResolveBookID(bs)
+		if err != nil {
+			s.mapErr(w, err)
+			return
+		}
+		f.Book = id
+	}
+	if ts := r.URL.Query().Get("testament"); ts != "" {
+		u := strings.ToUpper(ts)
+		if u != "OT" && u != "NT" {
+			s.mapErr(w, badRequest("invalid testament"))
+			return
+		}
+		f.Testament = u
+	}
+	wh := strings.ToLower(r.URL.Query().Get("whole"))
+	f.WholeWord = wh == "1" || wh == "true"
+	hits, err := s.eng.SearchFiltered(version, q, f)
 	if err != nil {
 		s.mapErr(w, err)
 		return
 	}
 	total := len(hits)
-	if total > limit {
+	if offset > total {
+		offset = total
+	}
+	hits = hits[offset:]
+	if len(hits) > limit {
 		hits = hits[:limit]
 	}
-	writeJSON(w, map[string]any{"hits": hits, "total": total})
+	writeJSON(w, map[string]any{"hits": hits, "total": total, "offset": offset})
 }
 
 func (s *Server) daily(w http.ResponseWriter, r *http.Request) {
-	version := r.URL.Query().Get("version")
-	h, err := s.eng.DailyVerse(version, time.Now().UTC())
+	version, f, err := s.sampleParams(r)
+	if err != nil {
+		s.mapErr(w, err)
+		return
+	}
+	t, err := parseDailyTime(r)
+	if err != nil {
+		s.mapErr(w, err)
+		return
+	}
+	h, err := s.eng.DailyVerseFiltered(version, t, f)
 	if err != nil {
 		s.mapErr(w, err)
 		return
@@ -188,11 +333,61 @@ func (s *Server) daily(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) random(w http.ResponseWriter, r *http.Request) {
-	version := r.URL.Query().Get("version")
-	h, err := s.eng.RandomVerse(version)
+	version, f, err := s.sampleParams(r)
+	if err != nil {
+		s.mapErr(w, err)
+		return
+	}
+	h, err := s.eng.RandomVerseFiltered(version, f)
 	if err != nil {
 		s.mapErr(w, err)
 		return
 	}
 	writeJSON(w, h)
+}
+
+func (s *Server) sampleParams(r *http.Request) (string, bible.SampleFilter, error) {
+	version := r.URL.Query().Get("version")
+	if version == "" {
+		v, err := s.eng.DefaultCorpusVersion()
+		if err != nil {
+			return "", bible.SampleFilter{}, badRequest("missing query parameter 'version'")
+		}
+		version = v
+	}
+	var f bible.SampleFilter
+	if bs := r.URL.Query().Get("book"); bs != "" {
+		id, err := bible.ResolveBookID(bs)
+		if err != nil {
+			return "", f, err
+		}
+		f.Book = id
+	}
+	if ts := r.URL.Query().Get("testament"); ts != "" {
+		u := strings.ToUpper(ts)
+		if u != "OT" && u != "NT" {
+			return "", f, badRequest("invalid testament")
+		}
+		f.Testament = u
+	}
+	return version, f, nil
+}
+
+func parseDailyTime(r *http.Request) (time.Time, error) {
+	loc := time.UTC
+	if tz := r.URL.Query().Get("tz"); tz != "" {
+		l, err := time.LoadLocation(tz)
+		if err != nil {
+			return time.Time{}, badRequest("invalid tz")
+		}
+		loc = l
+	}
+	if ds := r.URL.Query().Get("date"); ds != "" {
+		t, err := time.ParseInLocation("2006-01-02", ds, loc)
+		if err != nil {
+			return time.Time{}, badRequest("invalid date")
+		}
+		return t, nil
+	}
+	return time.Now().In(loc), nil
 }

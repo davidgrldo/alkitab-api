@@ -113,12 +113,51 @@ func IndonesianBookName(id string) string {
 
 // CanonicalBooks returns all 66 books as domain Book values (English names).
 func CanonicalBooks() []Book {
+	return LocalizedBooks("en")
+}
+
+// LocalizedBooks returns the 66-book canon with English (en) or Indonesian (id) names.
+func LocalizedBooks(locale string) []Book {
+	id := strings.EqualFold(locale, "id")
 	out := make([]Book, 0, len(canon))
 	for _, b := range canon {
+		name, abbr := b.EnName, b.EnAbbr
+		if id {
+			name, abbr = b.IdName, b.IdAbbr
+		}
 		out = append(out, Book{
-			ID: b.ID, Name: b.EnName, Abbreviation: b.EnAbbr,
+			ID: b.ID, Name: name, Abbreviation: abbr,
 			Testament: b.Testament, Chapters: b.Chapters,
 		})
 	}
 	return out
+}
+
+// LocalizeBooks rewrites Name/Abbr for known ids when locale is id.
+func LocalizeBooks(books []Book, locale string) []Book {
+	if !strings.EqualFold(locale, "id") {
+		return books
+	}
+	out := make([]Book, len(books))
+	copy(out, books)
+	for i := range out {
+		if b, ok := lookupByID(out[i].ID); ok {
+			out[i].Name = b.IdName
+			out[i].Abbreviation = b.IdAbbr
+		}
+	}
+	return out
+}
+
+// DisplayBook returns canon metadata for id using locale en or id.
+func DisplayBook(id, locale string) (Book, bool) {
+	b, ok := lookupByID(id)
+	if !ok {
+		return Book{}, false
+	}
+	name, abbr := b.EnName, b.EnAbbr
+	if strings.EqualFold(locale, "id") {
+		name, abbr = b.IdName, b.IdAbbr
+	}
+	return Book{ID: b.ID, Name: name, Abbreviation: abbr, Testament: b.Testament, Chapters: b.Chapters}, true
 }

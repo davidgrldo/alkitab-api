@@ -81,6 +81,56 @@ func TestEngineSearch(t *testing.T) {
 	}
 }
 
+func TestEngineSearchSkipsTitleAndWholeWord(t *testing.T) {
+	f := newFake()
+	all := []VerseHit{
+		{Translation: "kjv", Book: "3john", Chapter: 1, Verse: Verse{Number: 1, Content: "love heading", Type: "title"}},
+		{Translation: "kjv", Book: "3john", Chapter: 1, Verse: Verse{Number: 1, Content: "hello friend", Type: "content"}},
+		{Translation: "kjv", Book: "phlm", Chapter: 1, Verse: Verse{Number: 1, Content: "love of God", Type: "content"}},
+	}
+	src := struct {
+		*fakeSource
+		*fakeCorpus
+	}{f, &fakeCorpus{all}}
+	e := New(src)
+	hits, err := e.Search("kjv", "love")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 1 || hits[0].Book != "phlm" {
+		t.Errorf("skip title: %+v", hits)
+	}
+	hits, err = e.SearchFiltered("kjv", "love", SearchFilter{WholeWord: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 1 || hits[0].Book != "phlm" {
+		t.Errorf("whole word: %+v", hits)
+	}
+}
+
+func TestEngineCatalogLocal(t *testing.T) {
+	f := newFake()
+	src := struct {
+		*fakeSource
+		*fakeCorpus
+	}{f, &fakeCorpus{all: []VerseHit{{Translation: "kjv", Book: "3john", Chapter: 1, Verse: Verse{Type: "content", Content: "x"}}}}}
+	e := New(src)
+	cat := e.Catalog()
+	if len(cat) != 1 || cat[0].Origin != "local" {
+		t.Fatalf("%+v", cat)
+	}
+	found := false
+	for _, c := range cat[0].Capabilities {
+		if c == "corpus" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("caps %+v", cat[0].Capabilities)
+	}
+}
+
 func TestEngineDailyDeterministic(t *testing.T) {
 	all := []VerseHit{
 		{Translation: "kjv", Book: "3john", Chapter: 1, Verse: Verse{Number: 1, Content: "a", Type: "content"}},

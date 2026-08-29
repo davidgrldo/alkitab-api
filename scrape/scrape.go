@@ -5,7 +5,7 @@
 package scrape
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -63,17 +63,6 @@ func New(baseURL string) *Scrape {
 
 func (s *Scrape) Translations() []bible.Translation { return staticVersions }
 
-// throttle enforces minInterval between upstream requests.
-// ponytail: menahan lock selama sleep memang menserikan semua permintaan upstream — itu intinya proxy yang sopan.
-func (s *Scrape) throttle() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if wait := minInterval - time.Since(s.last); wait > 0 {
-		time.Sleep(wait)
-	}
-	s.last = time.Now()
-}
-
 func (s *Scrape) Books(version string) ([]bible.Book, error) {
 	if !versionSupported(version) {
 		return nil, bible.ErrUnsupportedVersion
@@ -81,7 +70,29 @@ func (s *Scrape) Books(version string) ([]bible.Book, error) {
 	return bible.CanonicalBooks(), nil
 }
 
+// throttle enforces minInterval between upstream requests.
+// ponytail: menahan lock selama sleep memang menserikan semua permintaan upstream — itu intinya proxy yang sopan.
+func (s *Scrape) throttle(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if wait := minInterval - time.Since(s.last); wait > 0 {
+		timer := time.NewTimer(wait)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	s.last = time.Now()
+	return nil
+}
+
 func (s *Scrape) Chapter(version, book string, chapter int) (*bible.Chapter, error) {
+	return s.ChapterContext(context.Background(), version, book, chapter)
+}
+
+func (s *Scrape) ChapterContext(ctx context.Context, version, book string, chapter int) (*bible.Chapter, error) {
 	if !versionSupported(version) {
 		return nil, bible.ErrUnsupportedVersion
 	}
@@ -90,26 +101,31 @@ func (s *Scrape) Chapter(version, book string, chapter int) (*bible.Chapter, err
 		return nil, bible.ErrNotFound
 	}
 	url := strings.Join([]string{s.base, version, bookName, strconv.Itoa(chapter)}, "/")
-	s.throttle()
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err := s.throttle(ctx); err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, errors.New("scrape: upstream request failed")
+		return nil, fmt.Errorf("%w: request failed", bible.ErrUpstream)
 	}
 	req.Header.Set("User-Agent", userAgent)
 	res, err := s.client.Do(req)
 	if err != nil {
-		return nil, errors.New("scrape: upstream request failed")
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, fmt.Errorf("%w: request failed", bible.ErrUpstream)
 	}
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusNotFound {
 		return nil, bible.ErrNotFound
 	}
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("scrape: upstream returned HTTP %d", res.StatusCode)
+		return nil, fmt.Errorf("%w: HTTP %d", bible.ErrUpstream, res.StatusCode)
 	}
 	verses, err := parse(io.LimitReader(res.Body, maxBodyBytes))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: parse failed", bible.ErrUpstream)
 	}
 	if len(verses) == 0 {
 		return nil, bible.ErrNotFound

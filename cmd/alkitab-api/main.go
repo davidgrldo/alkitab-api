@@ -34,10 +34,11 @@ func main() {
 		src = bible.NewChain(loc, sc)
 	}
 
+	addr := listenAddr(os.Getenv("ALKITAB_LISTEN"), port)
 	srv := server.New(bible.New(src))
-	log.Printf("alkitab-api listening on :%s (scrape=%v)", port, os.Getenv("ALKITAB_SCRAPE") == "1")
+	log.Printf("alkitab-api listening on %s (scrape=%v)", addr, os.Getenv("ALKITAB_SCRAPE") == "1")
 	httpSrv := &http.Server{
-		Addr:              ":" + port,
+		Addr:              addr,
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

@@ -1,6 +1,7 @@
 package scrape
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -52,5 +53,17 @@ func TestScrapeUnknownVersion(t *testing.T) {
 	s := New("https://alkitab.mobi")
 	if _, err := s.Books("nonsense"); err != bible.ErrUnsupportedVersion {
 		t.Errorf("want ErrUnsupportedVersion, got %v", err)
+	}
+}
+
+func TestScrapeUpstreamError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	s := New(srv.URL)
+	_, err := s.Chapter("tb", "3john", 1)
+	if !errors.Is(err, bible.ErrUpstream) {
+		t.Fatalf("want ErrUpstream, got %v", err)
 	}
 }

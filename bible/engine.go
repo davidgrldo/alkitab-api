@@ -1,11 +1,11 @@
 package bible
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"hash/fnv"
 	"math/rand/v2"
-	"strings"
 	"sync"
 	"time"
 )
@@ -31,6 +31,10 @@ func chapterKey(version, book string, chapter int) string {
 }
 
 func (e *Engine) Chapter(version, book string, chapter int) (*Chapter, error) {
+	return e.ChapterContext(context.Background(), version, book, chapter)
+}
+
+func (e *Engine) ChapterContext(ctx context.Context, version, book string, chapter int) (*Chapter, error) {
 	key := chapterKey(version, book, chapter)
 	e.mu.RLock()
 	if c, ok := e.cache[key]; ok {
@@ -39,13 +43,11 @@ func (e *Engine) Chapter(version, book string, chapter int) (*Chapter, error) {
 	}
 	e.mu.RUnlock()
 
-	c, err := e.src.Chapter(version, book, chapter)
+	c, err := fetchChapter(ctx, e.src, version, book, chapter)
 	if err != nil {
 		return nil, err
 	}
 	e.mu.Lock()
-	// ponytail: naive cap dengan eviksi sembarang — mencegah memori tumbuh tanpa batas
-	// pada server berumur panjang dengan source scrape; upgrade ke LRU jika hit-rate mulai penting.
 	if len(e.cache) >= maxCacheEntries {
 		for k := range e.cache {
 			delete(e.cache, k)
@@ -57,6 +59,18 @@ func (e *Engine) Chapter(version, book string, chapter int) (*Chapter, error) {
 	return c, nil
 }
 
+// ContextSource is implemented by adapters that honor cancellation (scrape).
+type ContextSource interface {
+	ChapterContext(ctx context.Context, version, book string, chapter int) (*Chapter, error)
+}
+
+func fetchChapter(ctx context.Context, src Source, version, book string, chapter int) (*Chapter, error) {
+	if cs, ok := src.(ContextSource); ok {
+		return cs.ChapterContext(ctx, version, book, chapter)
+	}
+	return src.Chapter(version, book, chapter)
+}
+
 // maxCacheEntries ≈ jumlah pasal satu Alkitab penuh (1.189) dengan ruang lega.
 const maxCacheEntries = 2048
 
@@ -66,7 +80,12 @@ func (e *Engine) corpus() (Corpus, bool) {
 }
 
 // Search returns verses whose content contains query (case-insensitive).
+// Titles are skipped. Pass a zero SearchFilter for unscoped substring match.
 func (e *Engine) Search(version, query string) ([]VerseHit, error) {
+	return e.SearchFiltered(version, query, SearchFilter{})
+}
+
+func (e *Engine) SearchFiltered(version, query string, f SearchFilter) ([]VerseHit, error) {
 	c, ok := e.corpus()
 	if !ok {
 		return nil, ErrUnsupportedFeature
@@ -75,37 +94,51 @@ func (e *Engine) Search(version, query string) ([]VerseHit, error) {
 	if err != nil {
 		return nil, err
 	}
-	q := strings.ToLower(query)
+	all = filterHits(all, f.Book, f.Testament)
 	var hits []VerseHit
 	for _, h := range all {
-		if strings.Contains(strings.ToLower(h.Verse.Content), q) {
+		if textMatches(h.Verse.Content, query, f.WholeWord) {
 			hits = append(hits, h)
 		}
 	}
 	return hits, nil
 }
 
-// DailyVerse returns a deterministic verse for the given date and version:
-// seed = fnv(date+version) % len(corpus). Same date+version always agrees.
 func (e *Engine) DailyVerse(version string, t time.Time) (*VerseHit, error) {
-	c, ok := e.corpus()
-	if !ok {
-		return nil, ErrUnsupportedFeature
-	}
-	all, err := c.AllVerses(version)
+	return e.DailyVerseFiltered(version, t, SampleFilter{})
+}
+
+func (e *Engine) DailyVerseFiltered(version string, t time.Time, f SampleFilter) (*VerseHit, error) {
+	all, err := e.samplePool(version, f)
 	if err != nil {
 		return nil, err
 	}
-	if len(all) == 0 {
-		return nil, ErrNotFound
+	seedKey := fmt.Sprintf("%04d%02d%02d%s", t.Year(), int(t.Month()), t.Day(), version)
+	if f.Book != "" {
+		seedKey += "b" + f.Book
 	}
-	seed := hashSeed(fmt.Sprintf("%04d%02d%02d%s", t.Year(), int(t.Month()), t.Day(), version))
+	if f.Testament != "" {
+		seedKey += "t" + f.Testament
+	}
+	seed := hashSeed(seedKey)
 	h := all[seed%uint32(len(all))]
 	return &h, nil
 }
 
-// RandomVerse returns an unpredictable verse. Auto-seeded via math/rand/v2.
 func (e *Engine) RandomVerse(version string) (*VerseHit, error) {
+	return e.RandomVerseFiltered(version, SampleFilter{})
+}
+
+func (e *Engine) RandomVerseFiltered(version string, f SampleFilter) (*VerseHit, error) {
+	all, err := e.samplePool(version, f)
+	if err != nil {
+		return nil, err
+	}
+	h := all[rand.IntN(len(all))]
+	return &h, nil
+}
+
+func (e *Engine) samplePool(version string, f SampleFilter) ([]VerseHit, error) {
 	c, ok := e.corpus()
 	if !ok {
 		return nil, ErrUnsupportedFeature
@@ -114,11 +147,11 @@ func (e *Engine) RandomVerse(version string) (*VerseHit, error) {
 	if err != nil {
 		return nil, err
 	}
+	all = filterHits(all, f.Book, f.Testament)
 	if len(all) == 0 {
 		return nil, ErrNotFound
 	}
-	h := all[rand.IntN(len(all))]
-	return &h, nil
+	return all, nil
 }
 
 func hashSeed(s string) uint32 {
@@ -163,8 +196,12 @@ func (c *Chain) Books(version string) ([]Book, error) {
 }
 
 func (c *Chain) Chapter(version, book string, chapter int) (*Chapter, error) {
+	return c.ChapterContext(context.Background(), version, book, chapter)
+}
+
+func (c *Chain) ChapterContext(ctx context.Context, version, book string, chapter int) (*Chapter, error) {
 	for _, s := range c.sources {
-		ch, err := s.Chapter(version, book, chapter)
+		ch, err := fetchChapter(ctx, s, version, book, chapter)
 		if err == nil {
 			return ch, nil
 		}
