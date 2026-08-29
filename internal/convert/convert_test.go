@@ -109,3 +109,68 @@ func TestFromAutoOSIS(t *testing.T) {
 		t.Fatalf("%+v", out)
 	}
 }
+
+func TestFromUSFMFootnote(t *testing.T) {
+	raw := `\id 3JN
+\c 1
+\v 1 The elder\f + \fr 1:1 \ft A note about Gaius.\f* unto Gaius
+`
+	out, err := FromUSFM([]byte(raw), Options{ID: "kjv", Name: "KJV", Lang: "en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	vs := out.Books[0].ChapterData[0].Verses
+	if len(vs) != 2 || vs[0].Type != "content" || vs[1].Type != "note" {
+		t.Fatalf("%+v", vs)
+	}
+	if !strings.Contains(vs[0].Content, "The elder") || strings.Contains(vs[0].Content, `\f`) {
+		t.Errorf("content %q", vs[0].Content)
+	}
+	if !strings.Contains(vs[1].Content, "A note about Gaius") {
+		t.Errorf("note %q", vs[1].Content)
+	}
+	if out.VerseCount != 1 {
+		t.Errorf("verse count %d", out.VerseCount)
+	}
+}
+
+func TestFromOSISNote(t *testing.T) {
+	raw := `<osis><osisText><div type="book" osisID="3John"><chapter osisID="3John.1"><verse osisID="3John.1.1">The elder<note>A note</note> unto Gaius</verse></chapter></div></osisText></osis>`
+	out, err := FromOSIS([]byte(raw), Options{ID: "kjv", Name: "KJV", Lang: "en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	vs := out.Books[0].ChapterData[0].Verses
+	if len(vs) != 2 || vs[0].Type != "content" || vs[1].Type != "note" {
+		t.Fatalf("%+v", vs)
+	}
+	if strings.Contains(vs[0].Content, "A note") {
+		t.Errorf("note leaked into content: %q", vs[0].Content)
+	}
+	if vs[1].Content != "A note" {
+		t.Errorf("note %q", vs[1].Content)
+	}
+}
+
+func TestToCSVAndFromCSV(t *testing.T) {
+	in := `[{"name":"3 John","chapters":[["a","b"]]}]`
+	out, err := FromJSON([]byte(in), Options{ID: "kjv", Name: "KJV", Lang: "en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := ToCSV(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	if !strings.Contains(s, "book,chapter,verse,type,content") || !strings.Contains(s, "3john,1,1,content,a") {
+		t.Fatalf("csv: %s", s)
+	}
+	back, err := FromCSV(raw, Options{ID: "kjv", Name: "KJV", Lang: "en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.VerseCount != 2 || back.Books[0].ID != "3john" {
+		t.Fatalf("%+v", back)
+	}
+}

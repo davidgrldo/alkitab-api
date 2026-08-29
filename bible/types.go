@@ -56,6 +56,7 @@ type SearchFilter struct {
 type SampleFilter struct {
 	Book      string
 	Testament string
+	Seed      *int64
 }
 
 type VerseHit struct {
@@ -63,6 +64,7 @@ type VerseHit struct {
 	Book        string `json:"book"`
 	Chapter     int    `json:"chapter"`
 	Verse       Verse  `json:"verse"`
+	Snippet     string `json:"snippet,omitempty"`
 }
 
 var (

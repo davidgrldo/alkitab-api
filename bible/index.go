@@ -71,6 +71,7 @@ func (ix *searchIndex) lookup(query string, f SearchFilter) []VerseHit {
 			continue
 		}
 		if textMatches(h.Verse.Content, query, f.WholeWord) {
+			h.Snippet = HighlightSnippet(h.Verse.Content, query, 40)
 			out = append(out, h)
 		}
 	}

@@ -1,7 +1,9 @@
 package bible
 
 import (
+	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -78,6 +80,9 @@ func TestEngineSearch(t *testing.T) {
 	}
 	if len(hits) != 1 || hits[0].Verse.Content != "God is love" {
 		t.Errorf("unexpected hits: %+v", hits)
+	}
+	if hits[0].Snippet == "" || !containsSnippetMark(hits[0].Snippet, "love") {
+		t.Errorf("snippet: %q", hits[0].Snippet)
 	}
 }
 
@@ -290,5 +295,96 @@ func TestChainFallsThroughOnUnsupportedVersion(t *testing.T) {
 	// Sanity: a version both sources reject still yields ErrNotFound.
 	if _, err := ch.Chapter("zzz", "3john", 1); err != ErrNotFound {
 		t.Errorf("want ErrNotFound for fully-unsupported version, got %v", err)
+	}
+}
+
+func containsSnippetMark(snippet, q string) bool {
+	return strings.Contains(strings.ToLower(snippet), "**"+strings.ToLower(q)+"**")
+}
+
+func TestHighlightSnippet(t *testing.T) {
+	got := HighlightSnippet("I have no greater joy than to hear.", "joy", 12)
+	if !strings.Contains(got, "**joy**") {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestEngineRandomSeeded(t *testing.T) {
+	all := []VerseHit{
+		{Translation: "kjv", Book: "3john", Chapter: 1, Verse: Verse{Number: 1, Content: "a", Type: "content"}},
+		{Translation: "kjv", Book: "3john", Chapter: 1, Verse: Verse{Number: 2, Content: "b", Type: "content"}},
+		{Translation: "kjv", Book: "phlm", Chapter: 1, Verse: Verse{Number: 1, Content: "c", Type: "content"}},
+	}
+	src := struct {
+		*fakeSource
+		*fakeCorpus
+	}{newFake(), &fakeCorpus{all}}
+	e := New(src)
+	seed := int64(42)
+	h1, err := e.RandomVerseFiltered("kjv", SampleFilter{Seed: &seed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h2, _ := e.RandomVerseFiltered("kjv", SampleFilter{Seed: &seed})
+	if h1.Verse.Content != h2.Verse.Content {
+		t.Errorf("same seed: %v vs %v", h1, h2)
+	}
+}
+
+func TestEngineCacheEvictsLeastRecent(t *testing.T) {
+	f := &fakeSource{
+		trans: []Translation{{ID: "kjv"}},
+		books: []Book{{ID: "john", Name: "John", Testament: "NT", Chapters: 3}},
+		chaps: map[string]*Chapter{
+			"kjv:john:1": {Translation: "kjv", Book: "john", Number: 1, Verses: []Verse{{Number: 1, Content: "a", Type: "content"}}},
+			"kjv:john:2": {Translation: "kjv", Book: "john", Number: 2, Verses: []Verse{{Number: 1, Content: "b", Type: "content"}}},
+			"kjv:john:3": {Translation: "kjv", Book: "john", Number: 3, Verses: []Verse{{Number: 1, Content: "c", Type: "content"}}},
+		},
+	}
+	e := newEngine(f, 2)
+	_, _ = e.Chapter("kjv", "john", 1)
+	_, _ = e.Chapter("kjv", "john", 2)
+	_, _ = e.Chapter("kjv", "john", 1) // promote 1
+	_, _ = e.Chapter("kjv", "john", 3) // evict 2
+	calls := f.calls
+	_, _ = e.Chapter("kjv", "john", 1)
+	if f.calls != calls {
+		t.Errorf("chapter 1 should stay cached, extra calls %d -> %d", calls, f.calls)
+	}
+	_, _ = e.Chapter("kjv", "john", 2)
+	if f.calls != calls+1 {
+		t.Errorf("chapter 2 should have been evicted, calls %d want %d", f.calls, calls+1)
+	}
+}
+
+func TestEngineLoadPassageCrossChapter(t *testing.T) {
+	f := &fakeSource{
+		trans: []Translation{{ID: "kjv"}},
+		books: []Book{{ID: "john", Name: "John", Testament: "NT", Chapters: 4}},
+		chaps: map[string]*Chapter{
+			"kjv:john:3": {
+				Translation: "kjv", Book: "john", Number: 3,
+				Verses: []Verse{
+					{Number: 16, Content: "sixteen", Type: "content"},
+					{Number: 17, Content: "seventeen", Type: "content"},
+				},
+			},
+			"kjv:john:4": {
+				Translation: "kjv", Book: "john", Number: 4,
+				Verses: []Verse{{Number: 1, Content: "four-one", Type: "content"}},
+			},
+		},
+	}
+	e := New(f)
+	ref, err := ParsePassage("John 3:16-4:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	chs, err := e.LoadPassage(context.Background(), "kjv", ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chs) != 2 || len(chs[0].Verses) != 2 || chs[1].Verses[0].Content != "four-one" {
+		t.Errorf("got %+v", chs)
 	}
 }

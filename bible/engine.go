@@ -16,12 +16,16 @@ type Engine struct {
 	mu  sync.RWMutex
 	// cache holds *Chapter values that are treated as immutable after store;
 	// callers must not mutate them.
-	cache   map[string]*Chapter
+	cache   *chapterLRU
 	indexes map[string]*searchIndex
 }
 
 func New(src Source) *Engine {
-	return &Engine{src: src, cache: make(map[string]*Chapter), indexes: make(map[string]*searchIndex)}
+	return newEngine(src, maxCacheEntries)
+}
+
+func newEngine(src Source, cacheCap int) *Engine {
+	return &Engine{src: src, cache: newChapterLRU(cacheCap), indexes: make(map[string]*searchIndex)}
 }
 
 // Source returns the underlying source (used by the server for listings).
@@ -37,27 +41,50 @@ func (e *Engine) Chapter(version, book string, chapter int) (*Chapter, error) {
 
 func (e *Engine) ChapterContext(ctx context.Context, version, book string, chapter int) (*Chapter, error) {
 	key := chapterKey(version, book, chapter)
-	e.mu.RLock()
-	if c, ok := e.cache[key]; ok {
-		e.mu.RUnlock()
+	e.mu.Lock()
+	if c, ok := e.cache.get(key); ok {
+		e.mu.Unlock()
 		return c, nil
 	}
-	e.mu.RUnlock()
+	e.mu.Unlock()
 
 	c, err := fetchChapter(ctx, e.src, version, book, chapter)
 	if err != nil {
 		return nil, err
 	}
 	e.mu.Lock()
-	if len(e.cache) >= maxCacheEntries {
-		for k := range e.cache {
-			delete(e.cache, k)
-			break
-		}
+	if existing, ok := e.cache.get(key); ok {
+		e.mu.Unlock()
+		return existing, nil
 	}
-	e.cache[key] = c
+	e.cache.put(key, c)
 	e.mu.Unlock()
 	return c, nil
+}
+
+// LoadPassage returns filtered chapters for a parsed reference, without
+// mutating cached Chapter values.
+func (e *Engine) LoadPassage(ctx context.Context, version string, ref PassageRef) ([]Chapter, error) {
+	spans := ref.Spans
+	if len(spans) == 0 {
+		spans = []ChapterSpan{{Chapter: ref.Chapter, Verses: []VerseSpec{ref.Verses}}}
+	}
+	out := make([]Chapter, 0, len(spans))
+	for _, span := range spans {
+		c, err := e.ChapterContext(ctx, version, ref.BookID, span.Chapter)
+		if err != nil {
+			return nil, err
+		}
+		ch := Chapter{Translation: c.Translation, Book: c.Book, Number: c.Number, Verses: c.Verses}
+		if len(span.Verses) > 0 {
+			ch.Verses = FilterVerses(c.Verses, span.Verses...)
+		}
+		if len(ch.Verses) == 0 {
+			return nil, ErrNotFound
+		}
+		out = append(out, ch)
+	}
+	return out, nil
 }
 
 // ContextSource is implemented by adapters that honor cancellation (scrape).
@@ -74,6 +101,70 @@ func fetchChapter(ctx context.Context, src Source, version, book string, chapter
 
 // maxCacheEntries ≈ jumlah pasal satu Alkitab penuh (1.189) dengan ruang lega.
 const maxCacheEntries = 2048
+
+type lruNode struct {
+	key        string
+	val        *Chapter
+	prev, next *lruNode
+}
+
+type chapterLRU struct {
+	cap        int
+	items      map[string]*lruNode
+	head, tail *lruNode
+}
+
+func newChapterLRU(cap int) *chapterLRU {
+	if cap < 1 {
+		cap = maxCacheEntries
+	}
+	head, tail := &lruNode{}, &lruNode{}
+	head.next, tail.prev = tail, head
+	return &chapterLRU{cap: cap, items: make(map[string]*lruNode), head: head, tail: tail}
+}
+
+func (c *chapterLRU) get(key string) (*Chapter, bool) {
+	n, ok := c.items[key]
+	if !ok {
+		return nil, false
+	}
+	c.moveFront(n)
+	return n.val, true
+}
+
+func (c *chapterLRU) put(key string, val *Chapter) {
+	if n, ok := c.items[key]; ok {
+		n.val = val
+		c.moveFront(n)
+		return
+	}
+	n := &lruNode{key: key, val: val}
+	c.items[key] = n
+	c.insertFront(n)
+	if len(c.items) > c.cap {
+		victim := c.tail.prev
+		c.remove(victim)
+		delete(c.items, victim.key)
+	}
+}
+
+func (c *chapterLRU) insertFront(n *lruNode) {
+	n.next = c.head.next
+	n.prev = c.head
+	c.head.next.prev = n
+	c.head.next = n
+}
+
+func (c *chapterLRU) remove(n *lruNode) {
+	n.prev.next = n.next
+	n.next.prev = n.prev
+	n.prev, n.next = nil, nil
+}
+
+func (c *chapterLRU) moveFront(n *lruNode) {
+	c.remove(n)
+	c.insertFront(n)
+}
 
 func (e *Engine) corpus() (Corpus, bool) {
 	c, ok := e.src.(Corpus)
@@ -125,6 +216,10 @@ func (e *Engine) RandomVerseFiltered(version string, f SampleFilter) (*VerseHit,
 		return nil, err
 	}
 	h := all[rand.IntN(len(all))]
+	if f.Seed != nil {
+		rng := rand.New(rand.NewPCG(uint64(*f.Seed), uint64(*f.Seed)))
+		h = all[rng.IntN(len(all))]
+	}
 	return &h, nil
 }
 

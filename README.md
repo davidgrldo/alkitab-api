@@ -111,11 +111,11 @@ exactly when the active source can support them.
 | GET | `/v1/translations` | List translations with `origin` and `capabilities` |
 | GET | `/v1/{version}/books` | Books, chapter counts, OT/NT; `?locale=id` for Indonesian names |
 | GET | `/v1/{version}/{book}/{chapter}` | Whole chapter; `prev`/`next` pointers; `ETag` / `If-None-Match`; `?also=tb,bis` |
-| GET | `/v1/{version}/{book}/{chapter}/{verse}` | Single verse or range (`4` or `16-18`); verse-level `prev`/`next`; same `?also=` and `ETag` |
-| GET | `/v1/passage?version=&q=` | Human reference (`3john 1:4-6`, `3 John 1:4`, `Yohanes 3:16`) |
-| GET | `/v1/search?q=&version=&limit=` | Indexed search over the local corpus (token index; phrase scan for multi-word). Optional `book`, `testament`, `offset`, `whole=1`. Default limit 50, max 200. Titles skipped. |
+| GET | `/v1/{version}/{book}/{chapter}/{verse}` | Single verse, range (`4`, `16-18`), or comma list (`16,17`, `16-18,20`); verse-level `prev`/`next`; same `?also=` and `ETag` |
+| GET | `/v1/passage?version=&q=` | Human reference (`3john 1:4-6`, `John 3:16,17`, `Yohanes 3:16`, `Matt 5:1-7:29`). Cross-chapter responses use `chapters` |
+| GET | `/v1/search?q=&version=&limit=` | Indexed search over the local corpus. Hits include a `snippet` with `**match**`. Optional `book`, `testament`, `offset`, `whole=1`. Default limit 50, max 200. Titles skipped. |
 | GET | `/v1/daily?version=` | Deterministic per date & version. Optional `date=YYYY-MM-DD`, `tz=`, `book`, `testament`. Content verses only. |
-| GET | `/v1/random?version=` | Random verse (`book` / `testament` optional). Content verses only. |
+| GET | `/v1/random?version=` | Random verse (`book` / `testament` optional). `seed=` for a deterministic pick. Content verses only. |
 
 `{book}` accepts an id (`gen`), an English name (`Genesis`), or an Indonesian
 name (`Kejadian`) — case-insensitive. Typed errors map to honest status codes:
@@ -141,8 +141,9 @@ into BYOD:
 
 ```bash
 go run ./cmd/alkitab-convert -id kjv -name "King James Version" -lang en en_kjv.json > kjv.json
-# USFM or OSIS: auto-detected, or -format usfm / -format osis. Indonesian book names: -name-locale id
-# Canon chapter-count check: -validate
+# USFM, OSIS, or CSV: auto-detected, or -format usfm / osis / csv. Emit CSV: -out csv
+# Indonesian book names: -name-locale id. Canon chapter-count check: -validate
+# USFM \\f…\\f* and OSIS <note> become verses with type=note
 
 ```
 

@@ -93,6 +93,50 @@ func TestVerseRange(t *testing.T) {
 	}
 }
 
+func TestVerseCommaList(t *testing.T) {
+	h := newServer(t).Handler()
+	m := getJSON(t, h, "/v1/kjv/3john/1/4,6", 200)
+	verses, _ := m["verses"].([]any)
+	if len(verses) != 2 {
+		t.Errorf("want 2 verses, got %d", len(verses))
+	}
+	if verses[0].(map[string]any)["verse"] != float64(4) || verses[1].(map[string]any)["verse"] != float64(6) {
+		t.Errorf("got %v", verses)
+	}
+}
+
+func TestPassageCommaQuery(t *testing.T) {
+	h := newServer(t).Handler()
+	m := getJSON(t, h, "/v1/passage?version=kjv&q=3john+1:4,6", 200)
+	verses, _ := m["verses"].([]any)
+	if len(verses) != 2 {
+		t.Errorf("want 2 verses, got %d; body=%v", len(verses), m)
+	}
+}
+
+func TestSearchSnippet(t *testing.T) {
+	h := newServer(t).Handler()
+	m := getJSON(t, h, "/v1/search?q=truth&version=kjv", 200)
+	hits, _ := m["hits"].([]any)
+	if len(hits) == 0 {
+		t.Fatal("no hits")
+	}
+	row, _ := hits[0].(map[string]any)
+	sn, _ := row["snippet"].(string)
+	if !strings.Contains(sn, "**") {
+		t.Errorf("want highlighted snippet, got %q", sn)
+	}
+}
+
+func TestRandomSeed(t *testing.T) {
+	h := newServer(t).Handler()
+	a := getJSON(t, h, "/v1/random?version=kjv&seed=42", 200)
+	b := getJSON(t, h, "/v1/random?version=kjv&seed=42", 200)
+	if a["verse"].(map[string]any)["content"] != b["verse"].(map[string]any)["content"] {
+		t.Errorf("same seed must agree")
+	}
+}
+
 func TestVerseRangeReversed(t *testing.T) {
 	h := newServer(t).Handler()
 	getJSON(t, h, "/v1/kjv/3john/1/6-4", 400)
